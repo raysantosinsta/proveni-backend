@@ -3,7 +3,8 @@ import { DocumentType } from '@prisma/client';
 
 export class UploadDocumentDto {
   @IsString()
-  batchId: string;
+  @IsOptional()
+  batchId?: string;
 
   @IsString()
   @IsOptional()

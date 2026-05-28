@@ -1,40 +1,40 @@
+// providers/provider.interface.ts
 export interface AiExtractionResult {
   productName: string | null;
   quantity: number | null;
   unit: string | null;
   co2Emitted: number | null;
-  co2Unit: 'kg' | 'ton' | null;
   supplier: string | null;
   confidence: number;
   error?: string;
 }
 
 export interface IAiProvider {
-  readonly name: string;
+  name: string;
   extractFromText(text: string): Promise<AiExtractionResult>;
 }
 
+/**
+ * Prompt para extração de documento único
+ */
 export function getExtractionPrompt(text: string): string {
-  return `
-    Extraia as seguintes informações do texto abaixo:
+  return `Você é um assistente especializado em análise de documentos.
 
-    - Produto: nome do produto/material
-    - Quantidade: número (ex: 5000, 10.5)
-    - Unidade: kg, ton, un, m³
-    - CO₂ Emitido: número em kg ou toneladas (se encontrar)
-    - Fornecedor: nome da empresa que emitiu o documento
+Extraia APENAS as informações solicitadas do texto abaixo.
 
-    Responda APENAS com JSON válido:
-    {
-      "productName": "string ou null",
-      "quantity": number ou null,
-      "unit": "string ou null",
-      "co2Emitted": number ou null,
-      "co2Unit": "kg" ou "ton" ou null,
-      "supplier": "string ou null",
-      "confidence": number (0-100)
-    }
+Responda SOMENTE com um JSON válido, sem texto adicional.
 
-    Texto: ${text.substring(0, 4000)}
-  `;
+{
+  "productName": "nome do produto (ex: Camisa, Polietileno, PET)",
+  "quantity": quantidade como número (ex: 100, 50.5),
+  "unit": "unidade de medida (kg, L, un, t, m, etc)",
+  "co2Emitted": "emissão de CO₂ em kg (apenas o número)",
+  "supplier": "nome do fornecedor ou empresa",
+  "confidence": "número de 0 a 100 indicando sua confiança"
+}
+
+Se não encontrar uma informação, use null.
+
+Texto do documento:
+${text.substring(0, 8000)}`;
 }

@@ -23,7 +23,7 @@ export class CompanySuppliersController {
   constructor(private companySuppliersService: CompanySuppliersService) {}
 
   @Post('direct')
-  @Roles(Role.MANAGER, Role.ADMIN)
+  @Roles(Role.MANAGER, Role.ADMIN, Role.SPECIALIST) // ✅ Adicionado SPECIALIST
   createDirect(
     @CurrentUser() user: any,
     @Body() dto: CreateSupplierDirectlyDto,
@@ -33,14 +33,14 @@ export class CompanySuppliersController {
   }
 
   @Get()
-  @Roles(Role.MANAGER, Role.ADMIN)
+  @Roles(Role.MANAGER, Role.ADMIN, Role.SPECIALIST) // ✅ Adicionado SPECIALIST
   getSuppliers(@CurrentUser() user: any) {
     const companyId = user.companyId;
     return this.companySuppliersService.getSuppliersByCompany(companyId);
   }
 
   @Delete(':supplierId')
-  @Roles(Role.MANAGER, Role.ADMIN)
+  @Roles(Role.MANAGER, Role.ADMIN, Role.SPECIALIST) // ✅ Adicionado SPECIALIST
   blockSupplier(
     @CurrentUser() user: any,
     @Param('supplierId') supplierId: string,

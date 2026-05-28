@@ -236,8 +236,8 @@ model Batch {
 model Document {
   id String @id @default(cuid())
 
-  batchId String
-  batch   Batch  @relation(fields: [batchId], references: [id])
+  batchId String?
+  batch   Batch?  @relation(fields: [batchId], references: [id])
 
   supplierId String
   supplier   Company @relation(fields: [supplierId], references: [id])

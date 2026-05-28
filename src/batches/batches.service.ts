@@ -7,6 +7,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateBatchDto } from './dto/create-batch.dto';
 import { BlockchainService } from '../blockchain/blockchain.service';
+import { Role } from '@prisma/client';
 
 @Injectable()
 export class BatchesService {
@@ -16,6 +17,9 @@ export class BatchesService {
   ) {}
 
   async create(companyId: string, dto: CreateBatchDto) {
+    if (!companyId) {
+      throw new Error('companyId é obrigatório para criar um lote');
+    }
     return this.prisma.batch.create({
       data: {
         batchId: dto.batchId,
@@ -29,7 +33,20 @@ export class BatchesService {
     });
   }
 
-  async findAllByCompany(companyId: string) {
+  async findAllByCompany(companyId?: string, userRole?: string) {
+    // Para SPECIALIST (sem companyId), busca todos os lotes
+    if (!companyId || userRole === Role.SPECIALIST) {
+      return this.prisma.batch.findMany({
+        include: {
+          documents: true,
+          batchSuppliers: { include: { supplier: true } },
+          company: true,
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+    }
+
+    // Para MANAGER e ADMIN com companyId
     return this.prisma.batch.findMany({
       where: { companyId },
       include: {
@@ -40,14 +57,28 @@ export class BatchesService {
     });
   }
 
-  async findOne(batchId: string, companyId: string) {
-    const batch = await this.prisma.batch.findFirst({
-      where: { batchId, companyId },
-      include: {
-        documents: true,
-        batchSuppliers: { include: { supplier: true } },
-      },
-    });
+  async findOne(batchId: string, companyId?: string, userRole?: string) {
+    let batch;
+
+    if (!companyId || userRole === Role.SPECIALIST) {
+      batch = await this.prisma.batch.findUnique({
+        where: { batchId },
+        include: {
+          documents: true,
+          batchSuppliers: { include: { supplier: true } },
+          company: true,
+        },
+      });
+    } else {
+      batch = await this.prisma.batch.findFirst({
+        where: { batchId, companyId },
+        include: {
+          documents: true,
+          batchSuppliers: { include: { supplier: true } },
+        },
+      });
+    }
+
     if (!batch) throw new NotFoundException('Lote não encontrado');
     return batch;
   }

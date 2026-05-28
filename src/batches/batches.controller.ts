@@ -14,25 +14,32 @@ export class BatchesController {
   constructor(private batchesService: BatchesService) {}
 
   @Post()
-  @Roles(Role.MANAGER, Role.ADMIN)
+  @Roles(Role.MANAGER, Role.ADMIN, Role.SPECIALIST) // ✅ Adicionado SPECIALIST
   create(@CurrentUser() user: any, @Body() createDto: CreateBatchDto) {
     return this.batchesService.create(user.companyId, createDto);
   }
 
   @Get()
-  @Roles(Role.MANAGER, Role.ADMIN)
+  @Roles(Role.MANAGER, Role.ADMIN, Role.SPECIALIST)
   findAll(@CurrentUser() user: any) {
+    return this.batchesService.findAllByCompany(user.companyId, user.role);
+  }
+
+  // Static routes MUST be declared before parameterized ones to avoid shadowing
+  @Get('supplier/available')
+  @Roles(Role.MANAGER, Role.ADMIN, Role.SPECIALIST) // ✅ Adicionado SPECIALIST
+  async getAvailableBatches(@CurrentUser() user: any) {
     return this.batchesService.findAllByCompany(user.companyId);
   }
 
   @Get(':batchId')
-  @Roles(Role.MANAGER, Role.ADMIN)
+  @Roles(Role.MANAGER, Role.ADMIN, Role.SPECIALIST) // ✅ Adicionado SPECIALIST
   findOne(@CurrentUser() user: any, @Param('batchId') batchId: string) {
     return this.batchesService.findOne(batchId, user.companyId);
   }
 
   @Post(':batchId/calculate-co2')
-  @Roles(Role.MANAGER, Role.ADMIN, Role.SPECIALIST)
+  @Roles(Role.MANAGER, Role.ADMIN, Role.SPECIALIST) // ✅ Adicionado SPECIALIST
   calculateCO2(@Param('batchId') batchId: string) {
     return this.batchesService.calculateTotalCO2(batchId);
   }
@@ -44,7 +51,7 @@ export class BatchesController {
   }
 
   @Post(':batchId/register-blockchain')
-  @Roles(Role.SPECIALIST, Role.ADMIN)
+  @Roles(Role.MANAGER, Role.ADMIN, Role.SPECIALIST) // ✅ Adicionado SPECIALIST
   registerBlockchain(@Param('batchId') batchId: string) {
     return this.batchesService.registerOnBlockchain(batchId);
   }

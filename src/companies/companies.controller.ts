@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
-
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 // src/companies/companies.controller.ts
 import {
@@ -32,21 +30,19 @@ export class CompaniesController {
   }
 
   @Get()
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.SPECIALIST) // ✅ Adicionado SPECIALIST
   findAll() {
     return this.companiesService.findAll();
   }
 
   @Get('dashboard')
-  @Roles(Role.MANAGER, Role.ADMIN)
+  @Roles(Role.MANAGER, Role.ADMIN, Role.SPECIALIST)
   getDashboard(@CurrentUser() user: any) {
-    const companyId =
-      user.role === Role.ADMIN ? user.companyId : user.companyId;
-    return this.companiesService.getDashboardStats(companyId);
+    return this.companiesService.getDashboardStats(user.companyId, user.role);
   }
 
   @Get(':id')
-  @Roles(Role.ADMIN, Role.MANAGER)
+  @Roles(Role.MANAGER, Role.ADMIN, Role.SPECIALIST) // ✅ Adicionado SPECIALIST
   findOne(@Param('id') id: string, @CurrentUser() user: any) {
     if (user.role !== Role.ADMIN && user.companyId !== id) {
       throw new Error('Acesso negado');
@@ -55,7 +51,7 @@ export class CompaniesController {
   }
 
   @Put(':id')
-  @Roles(Role.ADMIN, Role.MANAGER)
+  @Roles(Role.MANAGER, Role.ADMIN, Role.SPECIALIST) // ✅ Adicionado SPECIALIST
   update(
     @Param('id') id: string,
     @Body() updateDto: Partial<CreateCompanyDto>,
@@ -64,13 +60,13 @@ export class CompaniesController {
   }
 
   @Post('with-manager')
-  @Roles(Role.ADMIN)
+  @Roles(Role.MANAGER, Role.ADMIN, Role.SPECIALIST) // ✅ Adicionado SPECIALIST
   async createCompanyWithManager(@Body() dto: CreateCompanyWithManagerDto) {
     return this.companiesService.createCompanyWithManager(dto);
   }
 
   @Get('stats/system')
-  @Roles(Role.ADMIN)
+  @Roles(Role.MANAGER, Role.ADMIN, Role.SPECIALIST) // ✅ Adicionado SPECIALIST
   async getSystemStats() {
     return this.companiesService.getSystemStats();
   }

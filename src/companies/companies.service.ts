@@ -6,8 +6,9 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateCompanyDto } from './dto/create-company.dto';
-import * as bcrypt from 'bcryptjs'; // Adicione no topo do arquivo
+import * as bcrypt from 'bcryptjs';
 import { CreateCompanyWithManagerDto } from 'src/companies/dto/create-company-with-manager.dto';
+import { Role } from '@prisma/client';
 
 @Injectable()
 export class CompaniesService {
@@ -50,7 +51,27 @@ export class CompaniesService {
     return this.prisma.company.update({ where: { id }, data });
   }
 
-  async getDashboardStats(companyId: string) {
+  async getDashboardStats(companyId?: string, userRole?: string) {
+    // Para SPECIALIST (sem companyId), retorna estatísticas de todas as empresas
+    if (!companyId || userRole === Role.SPECIALIST) {
+      const [totalBatches, compliantBatches, totalCO2, totalSuppliers] =
+        await Promise.all([
+          this.prisma.batch.count(),
+          this.prisma.batch.count({ where: { isCompliant: true } }),
+          this.prisma.batch.aggregate({ _sum: { co2Emitted: true } }),
+          this.prisma.companySupplier.count({ where: { status: 'ACTIVE' } }),
+        ]);
+
+      return {
+        totalBatches,
+        compliantRate:
+          totalBatches > 0 ? (compliantBatches / totalBatches) * 100 : 0,
+        totalCO2: totalCO2._sum.co2Emitted || 0,
+        totalSuppliers,
+      };
+    }
+
+    // Para MANAGER e ADMIN com companyId
     const [totalBatches, compliantBatches, totalCO2, totalSuppliers] =
       await Promise.all([
         this.prisma.batch.count({ where: { companyId } }),
