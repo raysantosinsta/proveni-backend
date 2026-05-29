@@ -285,6 +285,10 @@ export class DocumentsService {
   /** -------------------------------------------------------------
    *  Validar documento (Operador) - CORRIGIDO
    *  ------------------------------------------------------------- */
+  // documents.service.ts - Modifique a parte de criação do lote (linhas 248-310)
+
+  // documents.service.ts - Trecho corrigido
+
   async validate(documentId: string, extractedData: any, validatorId: string) {
     const doc = await this.prisma.document.findUnique({
       where: { id: documentId },
@@ -311,49 +315,66 @@ export class DocumentsService {
         );
       }
 
-      // Gera um batchId único
-      let finalBatchIdStr: string;
-      let existingBatch: Batch | null;
-      let attempts = 0;
-      const maxAttempts = 5;
+      // 🔥 EXTRAI O NÚMERO DA NOTA FISCAL DOS DADOS EXTRAÍDOS
+      let invoiceNumber =
+        extractedData.invoiceNumber ||
+        extractedData.nfNumber ||
+        extractedData.numeroNota;
 
-      do {
-        // Se o operador forneceu um batchId, tenta usar ele
-        if (extractedData.batchId && attempts === 0) {
-          finalBatchIdStr = extractedData.batchId
-            .toUpperCase()
-            .replace(/\s/g, '-');
-        } else {
-          // Gera um ID único com timestamp e random
-          const timestamp = Date.now();
-          const random = Math.random()
-            .toString(36)
-            .substring(2, 8)
-            .toUpperCase();
-          finalBatchIdStr = `AUTO-${timestamp}-${random}`;
+      // Se não encontrou, tenta extrair do nome do arquivo (com verificação de null)
+      if (!invoiceNumber && doc.originalName) {
+        // Padrões comuns de nota fiscal no nome do arquivo
+        const patterns = [
+          /(?:NFe|NF-e|NFS-e|NOTA\s*FISCAL)[\s-]*(\d+)/i,
+          /(?:nota|fiscal)[\s-]*(\d+)/i,
+          /(\d{30,44})/, // Chave NFe
+          /(\d{6,9})/, // Número comum
+        ];
+
+        for (const pattern of patterns) {
+          const match = doc.originalName.match(pattern);
+          if (match && match[1]) {
+            invoiceNumber = match[1];
+            break;
+          }
         }
+      }
 
-        // Verifica se o batchId já existe
-        existingBatch = await this.prisma.batch.findUnique({
-          where: { batchId: finalBatchIdStr },
-        });
-
-        attempts++;
-      } while (existingBatch && attempts < maxAttempts);
-
-      if (existingBatch) {
-        throw new BadRequestException(
-          'Não foi possível gerar um ID único para o lote. Tente novamente.',
+      // Se ainda não tem, usa timestamp
+      if (!invoiceNumber) {
+        invoiceNumber = Date.now().toString();
+        this.logger.warn(
+          `Número da nota não encontrado, usando timestamp: ${invoiceNumber}`,
         );
       }
 
-      this.logger.log(`Criando novo lote com ID: ${finalBatchIdStr}`);
+      // 🔥 GERA O BATCH ID NO PADRÃO SOLICITADO
+      let finalBatchIdStr = `proveni-nf-${invoiceNumber}`;
+
+      this.logger.log(`📦 Criando novo lote com ID: ${finalBatchIdStr}`);
+
+      // Verifica se o batchId já existe
+      let existingBatch = await this.prisma.batch.findUnique({
+        where: { batchId: finalBatchIdStr },
+      });
+
+      // Se já existe, adiciona sufixo
+      let counter = 1;
+      while (existingBatch) {
+        finalBatchIdStr = `proveni-nf-${invoiceNumber}-${counter}`;
+        existingBatch = await this.prisma.batch.findUnique({
+          where: { batchId: finalBatchIdStr },
+        });
+        counter++;
+      }
 
       // Cria o lote pertencente à empresa do operador
       const newBatch = await this.prisma.batch.create({
         data: {
           batchId: finalBatchIdStr,
-          productName: extractedData.productName || doc.filename,
+          productName:
+            extractedData.productName || doc.originalName || 'Produto sem nome',
+          productDescription: `Lote criado automaticamente a partir da NF ${invoiceNumber}`,
           quantity: extractedData.quantity
             ? parseFloat(extractedData.quantity)
             : null,
@@ -369,10 +390,11 @@ export class DocumentsService {
       batchIdToLink = newBatch.id;
 
       this.logger.log(
-        `Lote criado com sucesso: ${finalBatchIdStr} (ID: ${newBatch.id})`,
+        `✅ Lote criado com sucesso: ${finalBatchIdStr} (ID: ${newBatch.id})`,
       );
     }
 
+    // Resto do código continua igual...
     const updated = await this.prisma.document.update({
       where: { id: documentId },
       data: {
@@ -402,7 +424,8 @@ export class DocumentsService {
           co2Emitted: extractedData.co2Emitted
             ? parseFloat(extractedData.co2Emitted)
             : 0,
-          productName: extractedData.productName || doc.filename,
+          productName:
+            extractedData.productName || doc.originalName || 'Produto sem nome',
           documentId: doc.id,
         },
         create: {
@@ -411,7 +434,8 @@ export class DocumentsService {
           co2Emitted: extractedData.co2Emitted
             ? parseFloat(extractedData.co2Emitted)
             : 0,
-          productName: extractedData.productName || doc.filename,
+          productName:
+            extractedData.productName || doc.originalName || 'Produto sem nome',
           documentId: doc.id,
         },
       });

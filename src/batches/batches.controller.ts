@@ -14,7 +14,7 @@ export class BatchesController {
   constructor(private batchesService: BatchesService) {}
 
   @Post()
-  @Roles(Role.MANAGER, Role.ADMIN, Role.SPECIALIST) // ✅ Adicionado SPECIALIST
+  @Roles(Role.MANAGER, Role.ADMIN, Role.SPECIALIST, Role.OPERATOR) // ✅ Adicionado OPERATOR
   create(@CurrentUser() user: any, @Body() createDto: CreateBatchDto) {
     return this.batchesService.create(user.companyId, createDto);
   }
