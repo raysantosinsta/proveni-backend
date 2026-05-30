@@ -146,4 +146,73 @@ export class BatchesService {
       throw error;
     }
   }
+  // src/batches/batches.service.ts
+  // Adicione este método
+
+  async addSupplierToBatch(
+    batchId: string,
+    data: {
+      supplierId: string;
+      productName: string;
+      co2Emitted?: number;
+      documentId?: string;
+    },
+    companyId: string,
+  ) {
+    // Verificar se o lote existe e pertence à empresa
+    const batch = await this.prisma.batch.findFirst({
+      where: { batchId, companyId },
+    });
+
+    if (!batch) {
+      throw new NotFoundException(`Lote ${batchId} não encontrado`);
+    }
+
+    // Verificar se o fornecedor existe
+    const supplier = await this.prisma.company.findUnique({
+      where: { id: data.supplierId },
+    });
+
+    if (!supplier) {
+      throw new NotFoundException(
+        `Fornecedor ${data.supplierId} não encontrado`,
+      );
+    }
+
+    // Criar ou atualizar o vínculo
+    const batchSupplier = await this.prisma.batchSupplier.upsert({
+      where: {
+        batchId_supplierId: {
+          batchId: batch.id,
+          supplierId: data.supplierId,
+        },
+      },
+      update: {
+        productName: data.productName,
+        co2Emitted: data.co2Emitted || 0,
+        documentId: data.documentId,
+      },
+      create: {
+        batchId: batch.id,
+        supplierId: data.supplierId,
+        productName: data.productName,
+        co2Emitted: data.co2Emitted || 0,
+        documentId: data.documentId,
+      },
+      include: {
+        supplier: {
+          select: {
+            id: true,
+            name: true,
+            cnpj: true,
+          },
+        },
+      },
+    });
+
+    // Recalcular o CO₂ total do lote
+    await this.calculateTotalCO2(batchId);
+
+    return batchSupplier;
+}
 }

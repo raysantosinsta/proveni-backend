@@ -32,6 +32,33 @@ export class BatchesController {
     return this.batchesService.findAllByCompany(user.companyId);
   }
 
+  // src/batches/batches.controller.ts
+  // Adicione este método ANTES do @Get(':batchId')
+
+  /**
+   * POST /batches/:batchId/suppliers
+   * Vincula um fornecedor a um lote existente
+   */
+  @Post(':batchId/suppliers')
+  @Roles(Role.MANAGER, Role.ADMIN, Role.SPECIALIST, Role.OPERATOR)
+  async addSupplierToBatch(
+    @Param('batchId') batchId: string,
+    @Body()
+    body: {
+      supplierId: string;
+      productName: string;
+      co2Emitted?: number;
+      documentId?: string;
+    },
+    @CurrentUser() user: any,
+  ) {
+    return this.batchesService.addSupplierToBatch(
+      batchId,
+      body,
+      user.companyId,
+    );
+  }
+
   @Get(':batchId')
   @Roles(Role.MANAGER, Role.ADMIN, Role.SPECIALIST) // ✅ Adicionado SPECIALIST
   findOne(@CurrentUser() user: any, @Param('batchId') batchId: string) {

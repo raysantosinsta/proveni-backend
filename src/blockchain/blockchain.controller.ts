@@ -18,6 +18,7 @@ import {
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/guards/decorators/current-user.decorator';
 import { BatchQueryResult, BlockchainService } from './blockchain.service';
+import { PrismaService } from '../prisma/prisma.service';
 
 // Interface para os resultados em lote
 interface BulkResult {
@@ -36,7 +37,10 @@ interface RegisterResult {
 @Controller('blockchain')
 export class BlockchainController {
   logger: any;
-  constructor(private readonly blockchainService: BlockchainService) {}
+  constructor(
+    private readonly blockchainService: BlockchainService,
+    private readonly prisma: PrismaService, // ← ADICIONE ESTA LINHA
+  ) {}
 
   // ============================================================
   // 🔓 ROTAS PÚBLICAS (Para Alfândega e Consultas)
@@ -387,5 +391,141 @@ export class BlockchainController {
       registeredBy: user.id,
       timestamp: new Date().toISOString(),
     };
+  }
+
+  /**
+   * GET /blockchain/batch/:batchId/traceability
+   * Retorna rastreabilidade COMPLETA (inclui fornecedores)
+   * 🔓 ROTA PÚBLICA - Para Alfândega
+   */
+  @Get('batch/:batchId/traceability')
+  async getFullTraceability(@Param('batchId') batchId: string) {
+    // 1. Buscar dados da blockchain
+    const blockchainData = await this.blockchainService.getBatch(batchId);
+
+    if (!blockchainData) {
+      throw new HttpException(
+        {
+          success: false,
+          message: 'Lote não encontrado na blockchain',
+          batchId,
+        },
+        HttpStatus.NOT_FOUND,
+      );
+    }
+
+    // 2. Buscar dados do banco (incluindo fornecedores)
+    const batchWithSuppliers = await this.prisma.batch.findUnique({
+      where: { batchId },
+      include: {
+        company: {
+          select: {
+            id: true,
+            name: true,
+            cnpj: true,
+          },
+        },
+        batchSuppliers: {
+          include: {
+            supplier: {
+              select: {
+                id: true,
+                name: true,
+                cnpj: true,
+                email: true,
+              },
+            },
+            document: {
+              select: {
+                id: true,
+                ipfsHash: true,
+                originalName: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!batchWithSuppliers) {
+      throw new HttpException(
+        {
+          success: false,
+          message: 'Lote não encontrado no banco de dados',
+          batchId,
+        },
+        HttpStatus.NOT_FOUND,
+      );
+    }
+
+    // 3. Montar resposta com rastreabilidade completa
+    const totalCO2 = blockchainData.co2Emitted;
+
+    const suppliersTraceability = batchWithSuppliers.batchSuppliers.map(
+      (bs) => {
+        const co2Contribution = bs.co2Emitted || 0;
+        const percentageOfTotal =
+          totalCO2 > 0 ? ((co2Contribution / totalCO2) * 100).toFixed(1) : '0';
+
+        // 🔧 CORREÇÃO: Definir documentInfo com tipo correto
+        type DocumentInfo = {
+          name: string;
+          ipfsHash: string;
+          url: string;
+        } | null;
+
+        let documentInfo: DocumentInfo = null;
+
+        if (bs.document && bs.document.ipfsHash) {
+          documentInfo = {
+            name: bs.document.originalName || 'Documento',
+            ipfsHash: bs.document.ipfsHash,
+            url: this.getIpfsUrl(bs.document.ipfsHash),
+          };
+        }
+
+        return {
+          name: bs.supplier.name,
+          cnpj: bs.supplier.cnpj,
+          material: bs.productName || 'Material não especificado',
+          co2Emitted: co2Contribution,
+          percentageOfTotal: `${percentageOfTotal}%`,
+          document: documentInfo,
+        };
+      },
+    );
+
+    return {
+      success: true,
+      batchId: batchId,
+      verifiedAt: new Date().toISOString(),
+      blockchain: {
+        txHash: batchWithSuppliers.blockchainTxHash,
+        registeredAt: blockchainData.registeredAt,
+        registeredBy: blockchainData.registeredBy,
+      },
+      product: {
+        name: blockchainData.productName,
+        totalCO2: blockchainData.co2Emitted,
+        isCompliant: blockchainData.isCompliant,
+      },
+      exporter: {
+        name: batchWithSuppliers.company?.name || 'Desconhecido',
+        cnpj: batchWithSuppliers.company?.cnpj || '—',
+      },
+      suppliers: suppliersTraceability,
+      documents: {
+        productDocument: blockchainData.ipfsDocumentHash || '',
+        productDocumentUrl: blockchainData.ipfsDocumentHash
+          ? this.getIpfsUrl(blockchainData.ipfsDocumentHash)
+          : '',
+      },
+    };
+  }
+
+  // Método auxiliar para URL do IPFS (com segurança para null)
+  private getIpfsUrl(hash: string | null): string {
+    if (!hash) return '';
+    return `https://gateway.pinata.cloud/ipfs/${hash}`;
   }
 }
