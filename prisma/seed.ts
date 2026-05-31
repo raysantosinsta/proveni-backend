@@ -1,26 +1,19 @@
-// prisma/seed-clean.ts
-import {
-  PrismaClient,
-  Role,
-  DocumentStatus,
-  DocumentType,
-  CompanyType,
-  Plan,
-  CompanyStatus,
-} from '@prisma/client';
+// prisma/seed-clean-users-only.ts
+import { PrismaClient, Role } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log('🚀 Iniciando seed limpo do CarbonChain ESG...');
+  console.log('🚀 Iniciando seed LIMPO - Apenas usuários...');
   console.log('='.repeat(60));
 
   // ============================================================
-  // 1. LIMPAR DADOS EXISTENTES
+  // 1. LIMPAR TODOS OS DADOS RELACIONADOS
   // ============================================================
-  console.log('\n🗑️ Removendo dados existentes...');
+  console.log('\n🗑️ Removendo todos os dados existentes...');
 
+  // Ordem correta para evitar violação de chaves estrangeiras
   await prisma.syncLog.deleteMany();
   await prisma.dashboardView.deleteMany();
   await prisma.auditLog.deleteMany();
@@ -32,82 +25,57 @@ async function main() {
   await prisma.companySupplier.deleteMany();
   await prisma.user.deleteMany();
   await prisma.company.deleteMany();
+  await prisma.complianceRule.deleteMany();
 
-  console.log('  ✅ Todos os dados removidos');
+  console.log('  ✅ Todos os dados removidos com sucesso');
 
   // ============================================================
-  // 2. CRIAR EMPRESAS
+  // 2. CRIAR EMPRESAS MÍNIMAS (opcional - para usuários que precisam)
   // ============================================================
-  console.log('\n🏢 Criando empresas...');
+  console.log('\n🏢 Criando empresas base...');
 
-  // Exportador (Cliente)
-  const exportador = await prisma.company.create({
+  // Empresa para MANAGER/CLIENT
+  const clientCompany = await prisma.company.create({
     data: {
-      name: 'Bonecos Brasil Indústria Ltda',
+      name: 'Empresa Cliente Exemplo',
       cnpj: '12.345.678/0001-90',
-      email: 'contato@bonecosbrasil.com.br',
+      email: 'contato@cliente.com.br',
       phone: '(11) 99999-8888',
-      companyType: CompanyType.CLIENT,
-      plan: Plan.PROFESSIONAL,
-      status: CompanyStatus.ACTIVE,
+      companyType: 'CLIENT',
+      plan: 'PROFESSIONAL',
+      status: 'ACTIVE',
     },
   });
 
-  // PROVENI (Operadora)
+  // Empresa para PROVENI (Operadora)
   const proveniCompany = await prisma.company.create({
     data: {
       name: 'PROVENI Tecnologia',
       cnpj: '00.000.000/0001-00',
       email: 'operacoes@proveni.com',
       phone: '(11) 99999-7777',
-      companyType: CompanyType.CLIENT,
-      plan: Plan.ENTERPRISE,
-      status: CompanyStatus.ACTIVE,
+      companyType: 'CLIENT',
+      plan: 'ENTERPRISE',
+      status: 'ACTIVE',
     },
   });
 
-  // Fornecedores
-  const plasticSupplier = await prisma.company.create({
+  // Empresa para SUPPLIER (Fornecedor padrão)
+  const supplierCompany = await prisma.company.create({
     data: {
-      name: 'EcoPlast Indústria de Plásticos',
+      name: 'Fornecedor Exemplo Ltda',
       cnpj: '98.765.432/0001-10',
-      email: 'vendas@ecoplast.com.br',
+      email: 'vendas@fornecedor.com.br',
       phone: '(11) 88888-7777',
-      companyType: CompanyType.SUPPLIER,
-      plan: Plan.BASIC,
-      status: CompanyStatus.ACTIVE,
+      companyType: 'SUPPLIER',
+      plan: 'BASIC',
+      status: 'ACTIVE',
     },
   });
 
-  const paintSupplier = await prisma.company.create({
-    data: {
-      name: 'ColorTint Tintas Especiais',
-      cnpj: '11.222.333/0001-44',
-      email: 'comercial@colortint.com.br',
-      phone: '(11) 77777-6666',
-      companyType: CompanyType.SUPPLIER,
-      plan: Plan.BASIC,
-      status: CompanyStatus.ACTIVE,
-    },
-  });
-
-  const packagingSupplier = await prisma.company.create({
-    data: {
-      name: 'EcoPack Embalagens Sustentáveis',
-      cnpj: '55.666.777/0001-88',
-      email: 'vendas@ecopack.com.br',
-      phone: '(11) 66666-5555',
-      companyType: CompanyType.SUPPLIER,
-      plan: Plan.BASIC,
-      status: CompanyStatus.ACTIVE,
-    },
-  });
-
-  console.log(`  ✅ Exportador: ${exportador.name}`);
-  console.log(`  ✅ PROVENI: ${proveniCompany.name}`);
-  console.log(
-    `  ✅ Fornecedores: ${plasticSupplier.name}, ${paintSupplier.name}, ${packagingSupplier.name}`,
-  );
+  console.log(`  ✅ Empresa Cliente: ${clientCompany.name}`);
+  console.log(`  ✅ Empresa PROVENI: ${proveniCompany.name}`);
+  console.log(`  ✅ Empresa Fornecedor: ${supplierCompany.name}`);
 
   // ============================================================
   // 3. CRIAR USUÁRIOS
@@ -116,260 +84,181 @@ async function main() {
 
   const hashedPassword = await bcrypt.hash('123456', 10);
 
-  // Manager (Exportador)
-  const manager = await prisma.user.create({
-    data: {
-      name: 'Carlos Silva',
-      email: 'carlos@bonecosbrasil.com.br',
-      passwordHash: hashedPassword,
-      role: Role.MANAGER,
-      companyId: exportador.id,
-      isActive: true,
-    },
-  });
-
-  // Fornecedores
-  await prisma.user.create({
-    data: {
-      name: 'João Souza',
-      email: 'joao@ecoplast.com.br',
-      passwordHash: hashedPassword,
-      role: Role.SUPPLIER,
-      companyId: plasticSupplier.id,
-      isActive: true,
-    },
-  });
-
-  await prisma.user.create({
-    data: {
-      name: 'Maria Santos',
-      email: 'maria@colortint.com.br',
-      passwordHash: hashedPassword,
-      role: Role.SUPPLIER,
-      companyId: paintSupplier.id,
-      isActive: true,
-    },
-  });
-
-  await prisma.user.create({
-    data: {
-      name: 'Pedro Oliveira',
-      email: 'pedro@ecopack.com.br',
-      passwordHash: hashedPassword,
-      role: Role.SUPPLIER,
-      companyId: packagingSupplier.id,
-      isActive: true,
-    },
-  });
-
-  // Operador (PROVENI)
-  const operator = await prisma.user.create({
-    data: {
-      name: 'Ana Ferreira',
-      email: 'ana@proveni.com',
-      passwordHash: hashedPassword,
-      role: Role.OPERATOR,
+  // Usuários por empresa
+  const users = [
+    // ADMIN (PROVENI)
+    {
+      name: 'Admin Master',
+      email: 'admin@proveni.com',
+      role: Role.ADMIN,
       companyId: proveniCompany.id,
-      isActive: true,
     },
-  });
+    {
+      name: 'Admin Suporte',
+      email: 'suporte@proveni.com',
+      role: Role.ADMIN,
+      companyId: proveniCompany.id,
+    },
 
-  // Especialista (PROVENI)
-  const specialist = await prisma.user.create({
-    data: {
+    // SPECIALIST (PROVENI)
+    {
       name: 'Dr. Ricardo Mendes',
       email: 'ricardo@proveni.com',
-      passwordHash: hashedPassword,
       role: Role.SPECIALIST,
       companyId: proveniCompany.id,
-      isActive: true,
     },
-  });
-
-  // Admin
-  const admin = await prisma.user.create({
-    data: {
-      name: 'Admin System',
-      email: 'admin@proveni.com',
-      passwordHash: hashedPassword,
-      role: Role.ADMIN,
-      isActive: true,
+    {
+      name: 'Dra. Patrícia Lima',
+      email: 'patricia@proveni.com',
+      role: Role.SPECIALIST,
+      companyId: proveniCompany.id,
     },
-  });
 
-  console.log(`  ✅ ${await prisma.user.count()} usuários criados`);
+    // OPERATOR (PROVENI)
+    {
+      name: 'Ana Ferreira',
+      email: 'ana@proveni.com',
+      role: Role.OPERATOR,
+      companyId: proveniCompany.id,
+    },
+    {
+      name: 'Lucas Mendes',
+      email: 'lucas@proveni.com',
+      role: Role.OPERATOR,
+      companyId: proveniCompany.id,
+    },
+    {
+      name: 'Carla Souza',
+      email: 'carla@proveni.com',
+      role: Role.OPERATOR,
+      companyId: proveniCompany.id,
+    },
+
+    // MANAGER (Cliente)
+    {
+      name: 'Carlos Silva',
+      email: 'carlos@cliente.com.br',
+      role: Role.MANAGER,
+      companyId: clientCompany.id,
+    },
+    {
+      name: 'Marina Oliveira',
+      email: 'marina@cliente.com.br',
+      role: Role.MANAGER,
+      companyId: clientCompany.id,
+    },
+    {
+      name: 'Roberto Almeida',
+      email: 'roberto@cliente.com.br',
+      role: Role.MANAGER,
+      companyId: clientCompany.id,
+    },
+
+    // SUPPLIER (Fornecedor)
+    {
+      name: 'João Souza',
+      email: 'joao@fornecedor.com.br',
+      role: Role.SUPPLIER,
+      companyId: supplierCompany.id,
+    },
+    {
+      name: 'Maria Santos',
+      email: 'maria@fornecedor.com.br',
+      role: Role.SUPPLIER,
+      companyId: supplierCompany.id,
+    },
+    {
+      name: 'Pedro Oliveira',
+      email: 'pedro@fornecedor.com.br',
+      role: Role.SUPPLIER,
+      companyId: supplierCompany.id,
+    },
+    {
+      name: 'Ana Costa',
+      email: 'ana@fornecedor.com.br',
+      role: Role.SUPPLIER,
+      companyId: supplierCompany.id,
+    },
+    {
+      name: 'Rafael Lima',
+      email: 'rafael@fornecedor.com.br',
+      role: Role.SUPPLIER,
+      companyId: supplierCompany.id,
+    },
+  ];
+
+  for (const user of users) {
+    await prisma.user.create({
+      data: {
+        name: user.name,
+        email: user.email,
+        passwordHash: hashedPassword,
+        role: user.role,
+        companyId: user.companyId,
+        isActive: true,
+      },
+    });
+    console.log(`  ✅ ${user.role}: ${user.name} - ${user.email}`);
+  }
 
   // ============================================================
-  // 4. CRIAR RELAÇÕES ENTRE EMPRESAS (FORNECEDORES)
+  // 4. CRIAR RELAÇÕES ENTRE EMPRESAS (para testes)
   // ============================================================
-  console.log('\n🔗 Vinculando fornecedores ao exportador...');
+  console.log('\n🔗 Criando relações entre empresas...');
 
   await prisma.companySupplier.createMany({
     data: [
       {
-        companyId: exportador.id,
-        supplierId: plasticSupplier.id,
-        status: 'ACTIVE',
-        invitedAt: new Date(),
-        acceptedAt: new Date(),
-      },
-      {
-        companyId: exportador.id,
-        supplierId: paintSupplier.id,
-        status: 'ACTIVE',
-        invitedAt: new Date(),
-        acceptedAt: new Date(),
-      },
-      {
-        companyId: exportador.id,
-        supplierId: packagingSupplier.id,
+        companyId: clientCompany.id,
+        supplierId: supplierCompany.id,
         status: 'ACTIVE',
         invitedAt: new Date(),
         acceptedAt: new Date(),
       },
     ],
   });
-  console.log('  ✅ 3 fornecedores vinculados ao exportador');
+  console.log('  ✅ Fornecedor vinculado ao cliente');
 
   // ============================================================
-  // 5. CRIAR DOCUMENTOS DOS FORNECEDORES (SOMENTE DOCUMENTOS!)
-  // ============================================================
-  console.log('\n📄 Criando documentos dos fornecedores...');
-  console.log(
-    '   ⚠️ NÃO serão criados lotes agora! Eles serão criados automaticamente pelo Operador.',
-  );
-
-  await prisma.document.createMany({
-    data: [
-      {
-        filename: 'NF_EcoPlast_001.pdf',
-        originalName: 'Nota Fiscal - Plástico PP',
-        supplierId: plasticSupplier.id,
-        docType: DocumentType.INVOICE,
-        processingStatus: DocumentStatus.PENDING, // Aguardando processamento
-        ipfsHash: 'QmX5gHk8x3Yz7Lp2Wm9Rq4Nt6Jv8Bc2Df1Gh3Jk5Lm7',
-        documentHash: 'abc123def456',
-        isValidated: false,
-        uploadedAt: new Date(),
-        uploadedById: operator.id,
-      },
-      {
-        filename: 'NF_ColorTint_001.pdf',
-        originalName: 'Nota Fiscal - Tinta Acrílica',
-        supplierId: paintSupplier.id,
-        docType: DocumentType.INVOICE,
-        processingStatus: DocumentStatus.PENDING,
-        ipfsHash: 'QmY6iJ9y4Za8Kq3Xn0Sp5Ou7Lw9Cd3Eg2Hk4Jm6Np8',
-        documentHash: 'def456ghi789',
-        isValidated: false,
-        uploadedAt: new Date(),
-        uploadedById: operator.id,
-      },
-      {
-        filename: 'NF_EcoPack_001.pdf',
-        originalName: 'Nota Fiscal - Caixa de Papelão',
-        supplierId: packagingSupplier.id,
-        docType: DocumentType.INVOICE,
-        processingStatus: DocumentStatus.PENDING,
-        ipfsHash: 'QmZ7kJ0z5Ab9Lr4Yo1Tq6Pv8Mx0De4Fh3Il5Kn7Or9',
-        documentHash: 'ghi789jkl012',
-        isValidated: false,
-        uploadedAt: new Date(),
-        uploadedById: operator.id,
-      },
-    ],
-  });
-  console.log(
-    `  ✅ ${await prisma.document.count()} documentos criados (aguardando extração)`,
-  );
-
-  // ============================================================
-  // 6. CRIAR LOTE FINAL (EXEMPLO PARA TESTE)
-  // ============================================================
-  console.log('\n🎯 Criando lote final de exemplo...');
-
-  const finalBatch = await prisma.batch.create({
-    data: {
-      batchId: 'TOY-2025-001',
-      productName: 'Boneco Aventura - Edição Limitada',
-      productDescription: 'Boneco articulado 30cm, conforme normas CE/ROHS',
-      quantity: 5000,
-      unit: 'unidades',
-      ncmCode: '9503.00',
-      co2Emitted: 3250,
-      co2PerUnit: 0.65,
-      isCompliant: true,
-      companyId: exportador.id,
-      status: 'COMPLETED',
-      blockchainTxHash: '0x71a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0',
-      blockchainRegisteredAt: new Date(),
-      registeredAt: new Date(),
-    },
-  });
-
-  // Vincular fornecedores ao lote final
-  await prisma.batchSupplier.createMany({
-    data: [
-      {
-        batchId: finalBatch.id,
-        supplierId: plasticSupplier.id,
-        productName: 'Plástico PP',
-        quantity: 5000,
-        unit: 'kg',
-        co2Emitted: 1250,
-      },
-      {
-        batchId: finalBatch.id,
-        supplierId: paintSupplier.id,
-        productName: 'Tinta Acrílica',
-        quantity: 500,
-        unit: 'litros',
-        co2Emitted: 500,
-      },
-      {
-        batchId: finalBatch.id,
-        supplierId: packagingSupplier.id,
-        productName: 'Caixa de Papelão',
-        quantity: 5000,
-        unit: 'unidades',
-        co2Emitted: 300,
-      },
-    ],
-  });
-
-  console.log(`  ✅ Lote final criado: ${finalBatch.batchId}`);
-  console.log(
-    `  ✅ ${await prisma.batchSupplier.count()} fornecedores vinculados`,
-  );
-
-  // ============================================================
-  // 7. RESUMO FINAL
+  // 5. RESUMO FINAL
   // ============================================================
   console.log('\n' + '='.repeat(60));
   console.log('📊 RESUMO DA EXECUÇÃO:');
   console.log('='.repeat(60));
   console.log(`🏢 Empresas: ${await prisma.company.count()}`);
   console.log(`👤 Usuários: ${await prisma.user.count()}`);
-  console.log(`📄 Documentos (pendentes): ${await prisma.document.count()}`);
-  console.log(`📦 Lotes finais: ${await prisma.batch.count()}`);
-  console.log(`🔗 Relações: ${await prisma.batchSupplier.count()}`);
+  console.log(`🔗 Relações empresa-fornecedor: ${await prisma.companySupplier.count()}`);
+  console.log(`📄 Documentos: ${await prisma.document.count()}`);
+  console.log(`📦 Lotes: ${await prisma.batch.count()}`);
   console.log('='.repeat(60));
 
-  console.log('\n🔑 CREDENCIAIS DE ACESSO:');
-  console.log('='.repeat(60));
-  console.log(`📧 Manager (Exportador): ${manager.email} / 123456`);
-  console.log(`📧 Operador: ${operator.email} / 123456`);
-  console.log(`📧 Especialista: ${specialist.email} / 123456`);
-  console.log(`📧 Admin: ${admin.email} / 123456`);
+  // Listar usuários por role
+  console.log('\n📋 USUÁRIOS POR PERFIL:');
   console.log('='.repeat(60));
 
-  console.log('\n📋 PRÓXIMOS PASSOS:');
-  console.log('='.repeat(60));
-  console.log('1. Operador deve extrair dados dos documentos pendentes');
-  console.log('2. Operador valida → sistema cria lotes automaticamente');
-  console.log('3. Especialista valida documentos');
-  console.log('4. Manager cria lotes finais ou usa o existente');
-  console.log('5. Especialista registra lote final na blockchain');
+  const admins = await prisma.user.findMany({ where: { role: Role.ADMIN } });
+  console.log(`\n👑 ADMIN (${admins.length}):`);
+  admins.forEach(u => console.log(`   - ${u.email} / 123456`));
+
+  const specialists = await prisma.user.findMany({ where: { role: Role.SPECIALIST } });
+  console.log(`\n🔬 SPECIALIST (${specialists.length}):`);
+  specialists.forEach(u => console.log(`   - ${u.email} / 123456`));
+
+  const operators = await prisma.user.findMany({ where: { role: Role.OPERATOR } });
+  console.log(`\n⚙️ OPERATOR (${operators.length}):`);
+  operators.forEach(u => console.log(`   - ${u.email} / 123456`));
+
+  const managers = await prisma.user.findMany({ where: { role: Role.MANAGER } });
+  console.log(`\n👔 MANAGER (${managers.length}):`);
+  managers.forEach(u => console.log(`   - ${u.email} / 123456`));
+
+  const suppliers = await prisma.user.findMany({ where: { role: Role.SUPPLIER } });
+  console.log(`\n🏭 SUPPLIER (${suppliers.length}):`);
+  suppliers.forEach(u => console.log(`   - ${u.email} / 123456`));
+
+  console.log('\n' + '='.repeat(60));
+  console.log('✅ Seed LIMPO concluído com sucesso!');
+  console.log('📌 Banco de dados está vazio (apenas usuários e empresas base)');
   console.log('='.repeat(60));
 }
 

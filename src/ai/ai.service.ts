@@ -1,18 +1,21 @@
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
-
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { OcrService } from '../ocr/ocr.service';
-import * as fs from 'fs';
-import { IAiProvider } from './providers/provider.interface';
+import {
+  IAiProvider,
+  AiExtractionResult,
+} from './providers/provider.interface';
 import { OpenAiProvider } from './providers/openai.provider';
 import { GeminiProvider } from './providers/gemini.provider';
 import { ClaudeProvider } from './providers/claude.provider';
-
+// import { GroqProvider } from './providers/groq.provider';
+import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { GroqProvider } from 'src/ai/providers/ollama.provider';
 
 @Injectable()
 export class AiService {
@@ -26,6 +29,7 @@ export class AiService {
     const openAiKey = this.configService.get<string>('OPENAI_API_KEY');
     const geminiKey = this.configService.get<string>('GEMINI_API_KEY');
     const claudeKey = this.configService.get<string>('CLAUDE_API_KEY');
+    const groqKey = this.configService.get<string>('GROQ_API_KEY');
 
     this.logger.log('🔧 Inicializando provedores de IA...');
     this.logger.log(
@@ -37,7 +41,15 @@ export class AiService {
     this.logger.log(
       `📋 CLAUDE_API_KEY: ${claudeKey ? '✅ Configurada' : '❌ Não configurada'}`,
     );
+    this.logger.log(
+      `📋 GROQ_API_KEY: ${groqKey ? '✅ Configurada' : '❌ Não configurada'}`,
+    );
 
+    // Ordem de prioridade: Groq (mais rápido e gratuito) primeiro
+    if (groqKey && groqKey !== '') {
+      this.providers.push(new GroqProvider(groqKey));
+      this.logger.log('✅ Groq (Llama) provider configurado - PRIORITÁRIO');
+    }
     if (openAiKey && openAiKey !== '') {
       this.providers.push(new OpenAiProvider(openAiKey));
       this.logger.log('✅ OpenAI provider configurado');
@@ -52,9 +64,7 @@ export class AiService {
     }
 
     if (this.providers.length === 0) {
-      this.logger.error(
-        '❌ Nenhum provedor de IA foi configurado. Certifique-se de configurar as chaves no arquivo .env.',
-      );
+      this.logger.error('❌ Nenhum provedor de IA foi configurado');
     } else {
       this.logger.log(
         `🎉 Total de provedores configurados: ${this.providers.length}`,
@@ -62,12 +72,16 @@ export class AiService {
     }
   }
 
+  /**
+   * Extrai dados de um documento usando IA
+   * Retorna todos os campos da nota fiscal
+   */
   async extractFromDocument(
     publicUrl: string,
     filePath?: string,
     mimeType?: string,
     rawText?: string,
-  ): Promise<any> {
+  ): Promise<AiExtractionResult> {
     let text = rawText || '';
 
     this.logger.log('🚀 Iniciando extração de dados...');
@@ -81,6 +95,20 @@ export class AiService {
     // Se não temos o texto mas temos o arquivo local, usa OCR direto
     if (!text && filePath && mimeType) {
       this.logger.log(`📄 Processando arquivo local via OCR: ${filePath}`);
+
+      if (!fs.existsSync(filePath)) {
+        throw new BadRequestException(`Arquivo não encontrado: ${filePath}`);
+      }
+
+      const stats = fs.statSync(filePath);
+      this.logger.log(
+        `📊 Tamanho do arquivo: ${(stats.size / 1024).toFixed(2)} KB`,
+      );
+
+      if (stats.size === 0) {
+        throw new BadRequestException('Arquivo vazio');
+      }
+
       text = await this.ocrService.extractTextFromAnyFile(filePath, mimeType);
       this.logger.log(`📝 OCR resultou em ${text.length} caracteres`);
     }
@@ -91,26 +119,81 @@ export class AiService {
         const axios = await import('axios');
         const response = await axios.default.get(publicUrl, {
           responseType: 'arraybuffer',
-          timeout: 30000,
+          timeout: 60000,
         });
-        this.logger.log(`✅ Download concluído: ${response.data.length} bytes`);
+        this.logger.log(
+          `✅ Download concluído: ${(response.data.length / 1024).toFixed(2)} KB`,
+        );
 
-        const tempPath = path.join(os.tmpdir(), `temp_${Date.now()}.pdf`);
+        const buffer = Buffer.from(response.data);
+        const isPDF = buffer.toString('hex', 0, 4).toLowerCase() === '25504446';
+        const isPNG = buffer.toString('hex', 1, 4).toLowerCase() === '504e47';
+        const isJPG = buffer.toString('hex', 0, 4).toLowerCase() === 'ffd8ffe0';
+
+        let tempPath: string;
+        if (isPDF) {
+          tempPath = path.join(os.tmpdir(), `temp_${Date.now()}.pdf`);
+        } else if (isPNG || isJPG) {
+          tempPath = path.join(os.tmpdir(), `temp_${Date.now()}.jpg`);
+        } else {
+          tempPath = path.join(os.tmpdir(), `temp_${Date.now()}.pdf`);
+        }
+
         fs.writeFileSync(tempPath, response.data);
         this.logger.log(`💾 Arquivo salvo temporariamente: ${tempPath}`);
 
-        text = await this.ocrService.extractTextFromPDF(tempPath);
+        text = await this.ocrService.extractTextFromAnyFile(
+          tempPath,
+          mimeType || 'application/octet-stream',
+        );
         this.logger.log(`📝 OCR resultou em ${text.length} caracteres`);
 
-        fs.unlinkSync(tempPath);
-        this.logger.log(`🗑️ Arquivo temporário removido`);
+        try {
+          fs.unlinkSync(tempPath);
+          this.logger.log(`🗑️ Arquivo temporário removido`);
+        } catch (unlinkError) {
+          this.logger.warn(
+            `Não foi possível remover arquivo temporário: ${unlinkError.message}`,
+          );
+        }
       } catch (error: any) {
-        this.logger.error(`❌ Erro ao baixar documento: ${error.message}`);
-        throw error;
+        this.logger.error(`❌ Erro ao processar documento: ${error.message}`);
+        throw new BadRequestException(
+          `Erro ao processar documento: ${error.message}`,
+        );
       }
     }
 
-    // Log do texto extraído (primeiros 500 caracteres)
+    // Verificar se conseguiu extrair texto
+    if (!text || text.length === 0) {
+      this.logger.error('❌ Nenhum texto foi extraído do documento!');
+
+      if (filePath && fs.existsSync(filePath)) {
+        this.logger.log('🔄 Tentando leitura direta do arquivo...');
+        try {
+          const buffer = fs.readFileSync(filePath);
+          const bufferString = buffer.toString(
+            'utf-8',
+            0,
+            Math.min(buffer.length, 1000),
+          );
+          if (
+            bufferString &&
+            bufferString.length > 50 &&
+            !bufferString.includes('%PDF')
+          ) {
+            text = bufferString;
+            this.logger.log(
+              `✅ Leitura direta obteve ${text.length} caracteres`,
+            );
+          }
+        } catch (readError) {
+          this.logger.warn(`Leitura direta falhou: ${readError.message}`);
+        }
+      }
+    }
+
+    // Log do texto extraído
     if (text && text.length > 0) {
       this.logger.log(`📝 Texto extraído (primeiros 500 caracteres):`);
       this.logger.log(`--- INÍCIO DO TEXTO ---`);
@@ -118,7 +201,10 @@ export class AiService {
       this.logger.log(`--- FIM DO TEXTO ---`);
       this.logger.log(`📊 Tamanho total do texto: ${text.length} caracteres`);
     } else {
-      this.logger.warn(`⚠️ Nenhum texto foi extraído do documento!`);
+      this.logger.error(`❌ Nenhum texto foi extraído!`);
+      throw new BadRequestException(
+        'Não foi possível extrair texto do documento. Verifique se o arquivo é um PDF ou imagem com texto legível.',
+      );
     }
 
     // Limitar o tamanho do texto para não ultrapassar limites da IA
@@ -130,19 +216,28 @@ export class AiService {
       text = text.substring(0, MAX_CHARS);
     }
 
-    if (!text || text.length < 50) {
+    if (text.length < 50) {
       this.logger.warn(
-        '⚠️ Texto extraído muito curto - possivelmente documento escaneado ou sem texto',
+        '⚠️ Texto extraído muito curto - possivelmente documento escaneado',
       );
       return {
+        invoiceNumber: null,
+        nfNumber: null,
         productName: null,
         quantity: null,
         unit: null,
         co2Emitted: null,
         supplier: null,
+        supplierCnpj: null,
+        buyer: null,
+        buyerCnpj: null,
+        totalValue: null,
+        issueDate: null,
+        ncmCode: null,
+        cfop: null,
         confidence: 10,
         error:
-          'Texto não identificado ou muito curto. Verifique se o documento é legível.',
+          'Texto muito curto. Documento pode ser escaneado ou não ter texto legível.',
       };
     }
 
@@ -160,6 +255,9 @@ export class AiService {
         this.logger.log(`✅ IA (${provider.name}) extraiu em ${duration}ms`);
         this.logger.log(`📊 Resultado: Confiança=${result.confidence}%`);
         this.logger.log(
+          `📦 Nota Fiscal: ${result.invoiceNumber || 'não encontrado'}`,
+        );
+        this.logger.log(
           `📦 Produto: ${result.productName || 'não encontrado'}`,
         );
         this.logger.log(
@@ -169,8 +267,34 @@ export class AiService {
         this.logger.log(
           `🏭 Fornecedor: ${result.supplier || 'não encontrado'}`,
         );
+        this.logger.log(
+          `🏭 CNPJ Fornecedor: ${result.supplierCnpj || 'não encontrado'}`,
+        );
+        this.logger.log(
+          `💰 Valor Total: ${result.totalValue || 'não encontrado'}`,
+        );
+        this.logger.log(`📅 Data: ${result.issueDate || 'não encontrado'}`);
+        this.logger.log(`🔢 NCM: ${result.ncmCode || 'não encontrado'}`);
+        this.logger.log(`📋 CFOP: ${result.cfop || 'não encontrado'}`);
 
-        return result;
+        // Retornar o resultado completo
+        return {
+          invoiceNumber: result.invoiceNumber,
+          nfNumber: result.nfNumber,
+          productName: result.productName,
+          quantity: result.quantity,
+          unit: result.unit,
+          co2Emitted: result.co2Emitted,
+          supplier: result.supplier,
+          supplierCnpj: result.supplierCnpj,
+          buyer: result.buyer,
+          buyerCnpj: result.buyerCnpj,
+          totalValue: result.totalValue,
+          issueDate: result.issueDate,
+          ncmCode: result.ncmCode,
+          cfop: result.cfop,
+          confidence: result.confidence || 70,
+        };
       } catch (error: any) {
         let errMsg = error.message || error;
         if (error.response?.data) {
@@ -185,13 +309,22 @@ export class AiService {
 
     this.logger.error('❌ Todos os provedores de IA falharam na extração.');
     return {
+      invoiceNumber: null,
+      nfNumber: null,
       productName: null,
       quantity: null,
       unit: null,
       co2Emitted: null,
       supplier: null,
+      supplierCnpj: null,
+      buyer: null,
+      buyerCnpj: null,
+      totalValue: null,
+      issueDate: null,
+      ncmCode: null,
+      cfop: null,
       confidence: 10,
-      error: `Todos os provedores falharam. Último erro: ${lastError?.message || lastError}`,
+      error: `Todos os provedores falharam. ${lastError?.message || lastError}`,
     };
   }
 

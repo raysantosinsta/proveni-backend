@@ -190,6 +190,15 @@ model Batch {
   unit               String?
   ncmCode            String?
 
+  // Exportação
+  countryOfOrigin    String?
+  destinationCountry String?
+  totalValue         Float?
+  currency           String?
+  incoterm           String?
+  shippingDate       DateTime?
+  estimatedArrival   DateTime?
+
   // Pegada de carbono
   co2Emitted Float?
   co2PerUnit Float?
@@ -209,6 +218,9 @@ model Batch {
   // Blockchain
   blockchainTxHash       String?
   ipfsDocumentHash       String?
+  ipfsInspectionHash     String?
+  nftTokenId             Int?
+  auditorAddress         String?
   blockchainRegisteredAt DateTime?
 
   // Status
@@ -216,6 +228,7 @@ model Batch {
   productionDate DateTime?
   registeredAt   DateTime    @default(now())
   validatedAt    DateTime?
+  auditedAt      DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

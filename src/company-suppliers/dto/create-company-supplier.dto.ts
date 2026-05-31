@@ -1,18 +1,32 @@
-import { IsString, IsEmail, IsOptional } from 'class-validator';
+import {
+  IsString,
+  IsEmail,
+  IsOptional,
+  IsStrongPassword,
+  MinLength,
+  IsEnum,
+} from 'class-validator';
 
 export class CreateSupplierDirectlyDto {
+  // Dados do Fornecedor
   @IsString()
+  @MinLength(3)
   supplierName: string;
 
   @IsString()
-  cnpj: string;
+  @MinLength(14)
+  supplierCnpj: string;
 
   @IsEmail()
-  email: string;
+  supplierEmail: string;
 
   @IsString()
   @IsOptional()
-  phone?: string;
+  supplierPhone?: string;
+
+  @IsString()
+  @IsOptional()
+  supplierPassword?: string;
 
   @IsString()
   @IsOptional()
@@ -20,5 +34,22 @@ export class CreateSupplierDirectlyDto {
 
   @IsString()
   @IsOptional()
-  companyId?: string; // Usado pelo ADMIN para especificar a empresa do fornecedor
+  address?: string;
+
+  @IsString()
+  @IsOptional()
+  city?: string;
+
+  @IsString()
+  @IsOptional()
+  state?: string;
+
+  @IsString()
+  @IsOptional()
+  country?: string;
+
+  // Dados da Empresa (usado pelo ADMIN/SPECIALIST para especificar)
+  @IsString()
+  @IsOptional()
+  companyId?: string;
 }

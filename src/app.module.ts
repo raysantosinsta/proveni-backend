@@ -12,9 +12,10 @@ import { IpfsModule } from './ipfs/ipfs.module';
 import { DocumentsModule } from './documents/documents.module';
 import { AiModule } from './ai/ai.module';
 import { BlockchainModule } from './blockchain/blockchain.module';
+import { ManagerModule } from './manager/manager.module';
 
 @Module({
-  imports: [ConfigModule.forRoot({ isGlobal: true }), PrismaModule, AuthModule, CompaniesModule, CompanySuppliersModule, BatchesModule, OcrModule, IpfsModule, DocumentsModule, AiModule, BlockchainModule],
+  imports: [ConfigModule.forRoot({ isGlobal: true }), PrismaModule, AuthModule, CompaniesModule, CompanySuppliersModule, BatchesModule, OcrModule, IpfsModule, DocumentsModule, AiModule, BlockchainModule, ManagerModule],
   controllers: [AppController],
   providers: [AppService],
 })

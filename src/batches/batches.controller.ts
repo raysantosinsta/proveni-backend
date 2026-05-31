@@ -1,45 +1,78 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
-import { Controller, Get, Post, Body, Param, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  UseGuards,
+  Patch,
+  Query,
+  HttpException,
+  HttpStatus,
+  Logger,
+} from '@nestjs/common';
 import { BatchesService } from './batches.service';
 import { CreateBatchDto } from './dto/create-batch.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
-import { Roles } from 'src/common/guards/decorators/roles.decorator';
-import { Role } from '@prisma/client';
-import { CurrentUser } from 'src/common/guards/decorators/current-user.decorator';
+import { Roles } from '../common/guards/decorators/roles.decorator';
+import { Role, BatchStatus } from '@prisma/client';
+import { CurrentUser } from '../common/guards/decorators/current-user.decorator';
 
 @Controller('batches')
-@UseGuards(JwtAuthGuard, RolesGuard)
 export class BatchesController {
+  private readonly logger = new Logger(BatchesController.name);
+
   constructor(private batchesService: BatchesService) {}
 
+  // ============================================================
+  // 🔓 ROTAS PÚBLICAS (Não precisam de autenticação)
+  // ============================================================
+
+  @Get('public/:batchId/suppliers')
+  async getPublicBatchSuppliers(@Param('batchId') batchId: string) {
+    return this.batchesService.getBatchSuppliersPublic(batchId);
+  }
+
+  @Get('public/:batchId')
+  async getPublicBatch(@Param('batchId') batchId: string) {
+    return this.batchesService.getBatchPublic(batchId);
+  }
+
+  // ============================================================
+  // 🔒 ROTAS PROTEGIDAS (Precisam de autenticação)
+  // ============================================================
+
   @Post()
-  @Roles(Role.MANAGER, Role.ADMIN, Role.SPECIALIST, Role.OPERATOR) // ✅ Adicionado OPERATOR
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.MANAGER, Role.ADMIN, Role.SPECIALIST, Role.OPERATOR)
   create(@CurrentUser() user: any, @Body() createDto: CreateBatchDto) {
+    if (!user.companyId && user.role !== Role.SPECIALIST) {
+      throw new HttpException(
+        'Usuário não está associado a uma empresa',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
     return this.batchesService.create(user.companyId, createDto);
   }
 
   @Get()
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.MANAGER, Role.ADMIN, Role.SPECIALIST)
   findAll(@CurrentUser() user: any) {
     return this.batchesService.findAllByCompany(user.companyId, user.role);
   }
 
-  // Static routes MUST be declared before parameterized ones to avoid shadowing
   @Get('supplier/available')
-  @Roles(Role.MANAGER, Role.ADMIN, Role.SPECIALIST) // ✅ Adicionado SPECIALIST
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.MANAGER, Role.ADMIN, Role.SPECIALIST)
   async getAvailableBatches(@CurrentUser() user: any) {
     return this.batchesService.findAllByCompany(user.companyId);
   }
 
-  // src/batches/batches.controller.ts
-  // Adicione este método ANTES do @Get(':batchId')
-
-  /**
-   * POST /batches/:batchId/suppliers
-   * Vincula um fornecedor a um lote existente
-   */
   @Post(':batchId/suppliers')
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.MANAGER, Role.ADMIN, Role.SPECIALIST, Role.OPERATOR)
   async addSupplierToBatch(
     @Param('batchId') batchId: string,
@@ -47,11 +80,19 @@ export class BatchesController {
     body: {
       supplierId: string;
       productName: string;
+      quantity?: number;
+      unit?: string;
       co2Emitted?: number;
       documentId?: string;
     },
     @CurrentUser() user: any,
   ) {
+    if (!user.companyId && user.role !== Role.SPECIALIST) {
+      throw new HttpException(
+        'Usuário não está associado a uma empresa',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
     return this.batchesService.addSupplierToBatch(
       batchId,
       body,
@@ -60,26 +101,142 @@ export class BatchesController {
   }
 
   @Get(':batchId')
-  @Roles(Role.MANAGER, Role.ADMIN, Role.SPECIALIST) // ✅ Adicionado SPECIALIST
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.MANAGER, Role.ADMIN, Role.SPECIALIST)
   findOne(@CurrentUser() user: any, @Param('batchId') batchId: string) {
-    return this.batchesService.findOne(batchId, user.companyId);
+    return this.batchesService.findOne(batchId, user.companyId, user.role);
+  }
+
+  // ✅ NOVO ENDPOINT: PATCH /batches/:batchId
+  @Patch(':batchId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.MANAGER, Role.ADMIN, Role.SPECIALIST)
+  async updateBatch(
+    @Param('batchId') batchId: string,
+    @Body()
+    updateData: {
+      ipfsDocumentHash?: string;
+      isCompliant?: boolean;
+      status?: BatchStatus;
+      productName?: string;
+      productDescription?: string;
+      countryOfOrigin?: string;
+      destinationCountry?: string;
+      totalValue?: number;
+      currency?: string;
+      incoterm?: string;
+    },
+    @CurrentUser() user: any,
+  ) {
+    this.logger.log(`Usuário ${user.id} atualizando lote ${batchId}`);
+    return this.batchesService.updateBatch(
+      batchId,
+      updateData,
+      user.companyId,
+      user.role,
+    );
   }
 
   @Post(':batchId/calculate-co2')
-  @Roles(Role.MANAGER, Role.ADMIN, Role.SPECIALIST) // ✅ Adicionado SPECIALIST
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.MANAGER, Role.ADMIN, Role.SPECIALIST)
   calculateCO2(@Param('batchId') batchId: string) {
     return this.batchesService.calculateTotalCO2(batchId);
   }
 
   @Get(':batchId/compliance')
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.MANAGER, Role.ADMIN, Role.SPECIALIST)
   getCompliance(@Param('batchId') batchId: string) {
     return this.batchesService.getComplianceStatus(batchId);
   }
 
   @Post(':batchId/register-blockchain')
-  @Roles(Role.MANAGER, Role.ADMIN, Role.SPECIALIST) // ✅ Adicionado SPECIALIST
-  registerBlockchain(@Param('batchId') batchId: string) {
-    return this.batchesService.registerOnBlockchain(batchId);
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.SPECIALIST, Role.ADMIN)
+  async registerBlockchain(
+    @Param('batchId') batchId: string,
+    @CurrentUser() user: any,
+  ) {
+    this.logger.log(
+      `Especialista ${user.id} registrando lote ${batchId} na blockchain`,
+    );
+    return this.batchesService.registerOnBlockchain(batchId, user.id);
+  }
+
+  @Post(':batchId/audit')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.SPECIALIST, Role.ADMIN)
+  async auditBatch(
+    @Param('batchId') batchId: string,
+    @Body() body: { isCompliant: boolean; ipfsInspectionHash: string },
+    @CurrentUser() user: any,
+  ) {
+    if (!body.ipfsInspectionHash && body.isCompliant) {
+      throw new HttpException(
+        'Laudo de inspeção é obrigatório para aprovação',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    return this.batchesService.auditBatchOnBlockchain(
+      batchId,
+      body.isCompliant,
+      body.ipfsInspectionHash,
+      user.id,
+    );
+  }
+
+  @Post(':batchId/export-to-blockchain')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.SPECIALIST, Role.ADMIN)
+  async exportToBlockchain(
+    @Param('batchId') batchId: string,
+    @CurrentUser() user: any,
+  ) {
+    return this.batchesService.exportBatchToBlockchain(batchId, user.id);
+  }
+
+  @Get('blockchain/:batchId')
+  async getFromBlockchain(@Param('batchId') batchId: string) {
+    return this.batchesService.getBatchFromBlockchain(batchId);
+  }
+
+  @Get('blockchain/:batchId/verify')
+  async quickVerify(@Param('batchId') batchId: string) {
+    return this.batchesService.quickBlockchainVerify(batchId);
+  }
+
+  @Get(':batchId/traceability')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.MANAGER, Role.ADMIN, Role.SPECIALIST, Role.SUPPLIER)
+  async getTraceability(@Param('batchId') batchId: string) {
+    return this.batchesService.getFullTraceability(batchId);
+  }
+
+  @Patch(':batchId/status')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.MANAGER, Role.ADMIN, Role.SPECIALIST)
+  async updateStatus(
+    @Param('batchId') batchId: string,
+    @Body('status') status: BatchStatus,
+  ) {
+    if (!Object.values(BatchStatus).includes(status)) {
+      throw new HttpException('Status inválido', HttpStatus.BAD_REQUEST);
+    }
+    return this.batchesService.updateStatus(batchId, status);
+  }
+
+  @Get('stats/export-summary')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.MANAGER, Role.ADMIN, Role.SPECIALIST)
+  async getExportSummary(@CurrentUser() user: any) {
+    return this.batchesService.getExportSummary(user.companyId, user.role);
+  }
+
+  @Post(':batchId/update-compliance')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.SPECIALIST, Role.ADMIN)
+  async updateCompliance(@Param('batchId') batchId: string) {
+    return this.batchesService.updateComplianceStatus(batchId);
   }
 }

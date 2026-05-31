@@ -1,6 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
-
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import {
   Body,
@@ -14,6 +13,8 @@ import {
   UploadedFile,
   UseGuards,
   UseInterceptors,
+  HttpException,
+  HttpStatus,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
@@ -22,7 +23,7 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { DocumentsService } from './documents.service';
 import { UploadDocumentDto } from './dto/upload-document.dto';
 import { DocumentStatus, Role } from '@prisma/client';
-import { Roles } from 'src/common/guards/decorators/roles.decorator';
+import { Roles } from '../common/guards/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
 
 @Controller('documents')
@@ -33,11 +34,10 @@ export class DocumentsController {
 
   /**
    * POST /documents/upload
-   * Recebe o arquivo via multipart/form-data + batchId, supplierId, docType no body
-   * FLUXO: SUPPLIER envia documento (único)
+   * Upload de documento - SUPPLIER, MANAGER e ADMIN podem enviar
    */
   @Post('upload')
-  @Roles(Role.SUPPLIER, Role.ADMIN)
+  @Roles(Role.SUPPLIER, Role.ADMIN, Role.MANAGER)
   @UseInterceptors(
     FileInterceptor('file', {
       storage: memoryStorage(),
@@ -53,20 +53,19 @@ export class DocumentsController {
     }),
   )
   async upload(
-    @UploadedFile()
-    file: Express.Multer.File,
+    @UploadedFile() file: Express.Multer.File,
     @Body() dto: UploadDocumentDto,
     @CurrentUser() user: any,
   ) {
     this.logger.log(
-      `SUPPLIER ${user.id} enviando documento: ${file.originalname}`,
+      `Usuário ${user.id} (${user.role}) enviando documento: ${file.originalname}`,
     );
     return this.documentsService.upload(file, dto, user.id);
   }
 
   /**
-   * GET /documents?batchId=xxx&status=xxx&supplierId=xxx
-   * Lista todos os documentos, opcionalmente filtrando por lote, status ou fornecedor
+   * GET /documents
+   * Listar documentos - Todos os roles podem acessar com diferentes filtros
    */
   @Get()
   @Roles(
@@ -82,20 +81,20 @@ export class DocumentsController {
     @Query('supplierId') supplierId?: string,
     @CurrentUser() user?: any,
   ) {
-    // Se for SUPPLIER, só pode ver seus próprios documentos
+    // SUPPLIER só vê seus próprios documentos
     if (user?.role === Role.SUPPLIER && user?.companyId) {
       return this.documentsService.findBySupplier(user.companyId);
     }
 
+    // MANAGER, ADMIN, SPECIALIST podem ver documentos de um fornecedor específico
     if (
       supplierId &&
-      (user?.role === Role.MANAGER ||
-        user?.role === Role.ADMIN ||
-        user?.role === Role.SPECIALIST)
+      [Role.MANAGER, Role.ADMIN, Role.SPECIALIST].includes(user?.role)
     ) {
       return this.documentsService.findBySupplier(supplierId);
     }
 
+    // Filtrar por status
     if (status) {
       const statuses = status.split(',') as DocumentStatus[];
       return this.documentsService.findByStatus(statuses);
@@ -106,10 +105,10 @@ export class DocumentsController {
 
   /**
    * GET /documents/pending
-   * Retorna documentos pendentes de extração (OPERATOR e SPECIALIST)
+   * Documentos pendentes de extração - OPERATOR, SPECIALIST e MANAGER
    */
   @Get('pending')
-  @Roles(Role.OPERATOR, Role.SPECIALIST)
+  @Roles(Role.OPERATOR, Role.SPECIALIST, Role.MANAGER)
   async findPending() {
     this.logger.log('Buscando documentos pendentes para extração');
     return this.documentsService.findByStatus([
@@ -121,18 +120,35 @@ export class DocumentsController {
 
   /**
    * GET /documents/awaiting-review
-   * Retorna documentos aguardando revisão do SPECIALIST
+   * Documentos aguardando revisão - SPECIALIST e MANAGER
    */
   @Get('awaiting-review')
-  @Roles(Role.SPECIALIST)
+  @Roles(Role.SPECIALIST, Role.MANAGER)
   async findAwaitingReview() {
     this.logger.log('Buscando documentos aguardando revisão do especialista');
     return this.documentsService.findByStatus([DocumentStatus.VALIDATED]);
   }
 
   /**
+   * GET /documents/manager
+   * Documentos específicos do MANAGER (própria empresa)
+   */
+  @Get('manager/list')
+  @Roles(Role.MANAGER)
+  async findManagerDocuments(@CurrentUser() user: any) {
+    if (!user?.companyId) {
+      throw new HttpException(
+        'Usuário não associado a empresa',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    this.logger.log(`Manager ${user.id} buscando seus documentos`);
+    return this.documentsService.findBySupplier(user.companyId);
+  }
+
+  /**
    * GET /documents/:id
-   * Retorna os detalhes de um documento específico
+   * Buscar documento por ID - Todos os roles autenticados
    */
   @Get(':id')
   @Roles(
@@ -148,13 +164,13 @@ export class DocumentsController {
 
   /**
    * POST /documents/:id/extract-ai
-   * FLUXO: OPERATOR extrai dados com IA (documento individual)
+   * Extrair dados com IA - OPERATOR, SPECIALIST e MANAGER
    */
   @Post(':id/extract-ai')
-  @Roles(Role.OPERATOR, Role.SPECIALIST)
+  @Roles(Role.OPERATOR, Role.SPECIALIST, Role.MANAGER)
   async extractAi(@Param('id') documentId: string, @CurrentUser() user: any) {
     this.logger.log(
-      `OPERATOR ${user.id} solicitando extração IA para documento ${documentId}`,
+      `Usuário ${user.id} (${user.role}) solicitando extração IA para documento ${documentId}`,
     );
     const result = await this.documentsService.extractDataWithAi(
       documentId,
@@ -168,16 +184,18 @@ export class DocumentsController {
 
   /**
    * POST /documents/:id/validate
-   * FLUXO: OPERATOR valida os dados extraídos
+   * Validar documento extraído - OPERATOR, SPECIALIST e MANAGER
    */
   @Post(':id/validate')
-  @Roles(Role.OPERATOR, Role.SPECIALIST)
+  @Roles(Role.OPERATOR, Role.SPECIALIST, Role.MANAGER)
   async validate(
     @Param('id') documentId: string,
     @Body('extractedData') extractedData: any,
     @CurrentUser() user: any,
   ) {
-    this.logger.log(`OPERATOR ${user.id} validando documento ${documentId}`);
+    this.logger.log(
+      `Usuário ${user.id} (${user.role}) validando documento ${documentId}`,
+    );
     const result = await this.documentsService.validate(
       documentId,
       extractedData,
@@ -191,7 +209,7 @@ export class DocumentsController {
 
   /**
    * POST /documents/:id/blockchain/register
-   * FLUXO: SPECIALIST aprova e registra na blockchain
+   * Registrar na blockchain - SPECIALIST e ADMIN
    */
   @Post(':id/blockchain/register')
   @Roles(Role.SPECIALIST, Role.ADMIN)
@@ -201,7 +219,7 @@ export class DocumentsController {
     @CurrentUser() user: any,
   ) {
     this.logger.log(
-      `SPECIALIST ${user.id} registrando documento ${documentId} na blockchain`,
+      `Especialista ${user.id} registrando documento ${documentId} na blockchain`,
     );
     const result = await this.documentsService.registerOnBlockchain(
       documentId,
@@ -215,8 +233,46 @@ export class DocumentsController {
   }
 
   /**
+   * POST /documents/:id/blockchain/audit
+   * Auditar lote diretamente na blockchain (compliance) - SPECIALIST e ADMIN
+   */
+  @Post(':id/blockchain/audit')
+  @Roles(Role.SPECIALIST, Role.ADMIN)
+  async auditOnBlockchain(
+    @Param('id') documentId: string,
+    @Body() body: { isCompliant: boolean; ipfsInspectionHash: string },
+    @CurrentUser() user: any,
+  ) {
+    this.logger.log(
+      `Especialista ${user.id} auditando documento ${documentId} na blockchain`,
+    );
+
+    const doc = await this.documentsService.findOne(documentId);
+    if (!doc.batch?.batchId) {
+      throw new HttpException(
+        'Documento não está associado a um lote',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    const result = await this.documentsService.auditBatchOnBlockchain(
+      doc.batch.batchId,
+      body.isCompliant,
+      body.ipfsInspectionHash,
+      user.id,
+    );
+
+    return {
+      message: body.isCompliant
+        ? 'Lote aprovado e certificado na blockchain'
+        : 'Lote reprovado na blockchain',
+      data: result,
+    };
+  }
+
+  /**
    * POST /documents/:id/reject
-   * FLUXO: SPECIALIST rejeita o documento
+   * Rejeitar documento - SPECIALIST e ADMIN
    */
   @Post(':id/reject')
   @Roles(Role.SPECIALIST, Role.ADMIN)
@@ -226,7 +282,7 @@ export class DocumentsController {
     @CurrentUser() user: any,
   ) {
     this.logger.log(
-      `SPECIALIST ${user.id} rejeitando documento ${documentId}. Motivo: ${reason}`,
+      `Especialista ${user.id} rejeitando documento ${documentId}. Motivo: ${reason}`,
     );
     const result = await this.documentsService.rejectDocument(
       documentId,
@@ -241,11 +297,43 @@ export class DocumentsController {
 
   /**
    * DELETE /documents/:id
-   * Remove um documento do banco de dados
+   * Remover documento - ADMIN e MANAGER
    */
   @Delete(':id')
   @Roles(Role.ADMIN, Role.MANAGER)
   remove(@Param('id') id: string) {
     return this.documentsService.remove(id);
+  }
+
+  /**
+   * GET /documents/:id/ocr-debug
+   * Retorna o texto extraído pelo OCR para debug
+   */
+  @Get(':id/ocr-debug')
+  @Roles(Role.MANAGER, Role.ADMIN, Role.SPECIALIST)
+  async getOcrDebug(@Param('id') documentId: string) {
+    const doc = await this.documentsService.findOne(documentId);
+
+    // 🔧 Extrair texto com segurança, tratando o tipo JsonValue
+    let extractedText: string | null = null;
+    let fullText: string | null = null;
+
+    if (doc.extractedData && typeof doc.extractedData === 'object') {
+      const extractedDataObj = doc.extractedData as Record<string, any>;
+      if (extractedDataObj.text && typeof extractedDataObj.text === 'string') {
+        extractedText = extractedDataObj.text;
+        fullText = extractedText.substring(0, 2000);
+      }
+    }
+
+    return {
+      id: doc.id,
+      originalName: doc.originalName,
+      processingStatus: doc.processingStatus,
+      extractedText: extractedText,
+      extractedData: doc.extractedData,
+      confidenceScore: doc.confidenceScore,
+      fullText: fullText,
+    };
   }
 }
