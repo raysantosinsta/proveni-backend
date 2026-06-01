@@ -46,7 +46,7 @@ export class BatchesController {
 
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.MANAGER, Role.ADMIN, Role.SPECIALIST, Role.OPERATOR)
+  @Roles(Role.MANAGER, Role.ADMIN, Role.OPERATOR) // ❌ SPECIALIST removido
   create(@CurrentUser() user: any, @Body() createDto: CreateBatchDto) {
     if (!user.companyId && user.role !== Role.SPECIALIST) {
       throw new HttpException(
@@ -107,7 +107,6 @@ export class BatchesController {
     return this.batchesService.findOne(batchId, user.companyId, user.role);
   }
 
-  // ✅ NOVO ENDPOINT: PATCH /batches/:batchId
   @Patch(':batchId')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.MANAGER, Role.ADMIN, Role.SPECIALIST)
@@ -169,19 +168,14 @@ export class BatchesController {
   @Roles(Role.SPECIALIST, Role.ADMIN)
   async auditBatch(
     @Param('batchId') batchId: string,
-    @Body() body: { isCompliant: boolean; ipfsInspectionHash: string },
+    @Body() body: { isCompliant: boolean; ipfsInspectionHash?: string },
     @CurrentUser() user: any,
   ) {
-    if (!body.ipfsInspectionHash && body.isCompliant) {
-      throw new HttpException(
-        'Laudo de inspeção é obrigatório para aprovação',
-        HttpStatus.BAD_REQUEST,
-      );
-    }
+    // ✅ Validação removida – o service gerará placeholder se necessário
     return this.batchesService.auditBatchOnBlockchain(
       batchId,
       body.isCompliant,
-      body.ipfsInspectionHash,
+      body.ipfsInspectionHash || '',
       user.id,
     );
   }
@@ -238,5 +232,12 @@ export class BatchesController {
   @Roles(Role.SPECIALIST, Role.ADMIN)
   async updateCompliance(@Param('batchId') batchId: string) {
     return this.batchesService.updateComplianceStatus(batchId);
+  }
+
+  @Get(':batchId/certificate')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.MANAGER, Role.ADMIN, Role.SPECIALIST)
+  async getCertificate(@Param('batchId') batchId: string) {
+    return this.batchesService.getCertificateInfo(batchId);
   }
 }

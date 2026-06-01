@@ -13,6 +13,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateBatchDto } from './dto/create-batch.dto';
 import { BlockchainService } from '../blockchain/blockchain.service';
 import { Role, BatchStatus } from '@prisma/client';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class BatchesService {
@@ -21,13 +22,13 @@ export class BatchesService {
   constructor(
     private prisma: PrismaService,
     private blockchainService: BlockchainService,
+    private configService: ConfigService,
   ) {}
 
-  // Adicione este método no BatchesService
+  // ============================================================
+  // 📌 MÉTODOS DE CRUD E UTILITÁRIOS (já existentes)
+  // ============================================================
 
-  /**
-   * Atualiza um lote existente
-   */
   async updateBatch(
     batchId: string,
     updateData: {
@@ -45,7 +46,6 @@ export class BatchesService {
     companyId?: string,
     userRole?: string,
   ) {
-    // Verificar se o lote existe
     const existingBatch = await this.prisma.batch.findUnique({
       where: { batchId },
     });
@@ -54,7 +54,6 @@ export class BatchesService {
       throw new NotFoundException(`Lote ${batchId} não encontrado`);
     }
 
-    // Verificar permissão (apenas dono do lote ou SPECIALIST/ADMIN)
     if (
       companyId &&
       existingBatch.companyId !== companyId &&
@@ -66,7 +65,6 @@ export class BatchesService {
       );
     }
 
-    // Atualizar o lote
     const updatedBatch = await this.prisma.batch.update({
       where: { batchId },
       data: updateData,
@@ -114,7 +112,7 @@ export class BatchesService {
         estimatedArrival: dto.estimatedArrival
           ? new Date(dto.estimatedArrival)
           : null,
-        isCompliant: true, // ✅ FORÇAR COMO CONFORME
+        isCompliant: false,
       },
     });
   }
@@ -167,9 +165,6 @@ export class BatchesService {
     return batch;
   }
 
-  /**
-   * Busca informações públicas do lote (sem autenticação)
-   */
   async getBatchPublic(batchId: string) {
     const batch = await this.prisma.batch.findUnique({
       where: { batchId },
@@ -202,9 +197,6 @@ export class BatchesService {
     return batch;
   }
 
-  /**
-   * Busca fornecedores do lote publicamente (sem autenticação)
-   */
   async getBatchSuppliersPublic(batchId: string) {
     const batch = await this.prisma.batch.findUnique({
       where: { batchId },
@@ -352,117 +344,13 @@ export class BatchesService {
     return batchSupplier;
   }
 
-  async registerOnBlockchain(batchId: string, specialistId: string) {
+  async getCertificateInfo(batchId: string) {
     const batch = await this.prisma.batch.findUnique({
       where: { batchId },
-      include: { company: true },
-    });
-
-    if (!batch) {
-      throw new NotFoundException(`Lote ${batchId} não encontrado`);
-    }
-
-    if (batch.status === BatchStatus.COMPLETED && batch.blockchainTxHash) {
-      throw new BadRequestException('Lote já registrado na blockchain');
-    }
-
-    await this.updateStatus(batchId, BatchStatus.BLOCKCHAIN);
-
-    try {
-      const companyName = batch.company?.name || 'Empresa Desconhecida';
-      const co2Emitted = batch.co2Emitted || 0;
-      const countryOfOrigin = batch.countryOfOrigin || 'Brasil';
-      const destinationCountry = batch.destinationCountry || 'União Europeia';
-      const ipfsDocumentHash = batch.ipfsDocumentHash || '';
-
-      const result = await this.blockchainService.registerBatchOnChain(
-        batch.batchId,
-        batch.productName,
-        co2Emitted,
-        companyName,
-        countryOfOrigin,
-        destinationCountry,
-        ipfsDocumentHash,
-      );
-
-      await this.prisma.batch.update({
-        where: { batchId },
-        data: {
-          blockchainTxHash: result.txHash,
-          blockchainRegisteredAt: new Date(),
-          status: BatchStatus.COMPLETED,
-        },
-      });
-
-      return {
-        success: true,
-        message: 'Lote registrado na blockchain com sucesso',
-        batchId,
-        txHash: result.txHash,
-      };
-    } catch (error: any) {
-      await this.updateStatus(batchId, BatchStatus.ERROR);
-      throw new BadRequestException(
-        `Erro ao registrar na blockchain: ${error.message}`,
-      );
-    }
-  }
-
-  async auditBatchOnBlockchain(
-    batchId: string,
-    isCompliant: boolean,
-    ipfsInspectionHash: string,
-    specialistId: string,
-  ) {
-    const batch = await this.prisma.batch.findUnique({
-      where: { batchId },
-    });
-
-    if (!batch) {
-      throw new NotFoundException(`Lote ${batchId} não encontrado`);
-    }
-
-    try {
-      const result = await this.blockchainService.auditBatchOnChain(
-        batchId,
-        isCompliant,
-        ipfsInspectionHash,
-      );
-
-      await this.prisma.batch.update({
-        where: { batchId },
-        data: {
-          isCompliant,
-          ipfsInspectionHash,
-          auditorAddress: specialistId,
-          auditedAt: new Date(),
-          blockchainTxHash: result.txHash,
-          status: isCompliant ? BatchStatus.COMPLETED : BatchStatus.REJECTED,
-        },
-      });
-
-      return {
-        success: true,
-        message: isCompliant
-          ? 'Lote aprovado e certificado na blockchain'
-          : 'Lote reprovado na blockchain',
-        batchId,
-        txHash: result.txHash,
-        nftTokenId: isCompliant ? batch.nftTokenId : null,
-      };
-    } catch (error: any) {
-      throw new BadRequestException(
-        `Erro ao auditar na blockchain: ${error.message}`,
-      );
-    }
-  }
-
-  async exportBatchToBlockchain(batchId: string, specialistId: string) {
-    const batch = await this.prisma.batch.findUnique({
-      where: { batchId },
-      include: {
-        company: true,
-        batchSuppliers: { include: { supplier: true } },
+      select: {
+        nftTokenId: true,
+        blockchainTxHash: true,
+        isCompliant: true,
       },
     });
 
@@ -470,22 +358,19 @@ export class BatchesService {
       throw new NotFoundException(`Lote ${batchId} não encontrado`);
     }
 
-    const registerResult = await this.registerOnBlockchain(
-      batchId,
-      specialistId,
-    );
-
-    if (batch.isCompliant) {
-      const auditResult = await this.auditBatchOnBlockchain(
-        batchId,
-        batch.isCompliant,
-        batch.ipfsInspectionHash || '',
-        specialistId,
-      );
-      return { registerResult, auditResult };
+    if (!batch.nftTokenId || batch.nftTokenId === 0) {
+      throw new NotFoundException('Certificado NFT ainda não foi emitido');
     }
 
-    return { registerResult };
+    const contractAddress = this.configService.get('CONTRACT_ADDRESS');
+
+    return {
+      success: true,
+      batchId,
+      nftTokenId: batch.nftTokenId,
+      isCompliant: batch.isCompliant,
+      openseaUrl: `https://testnets.opensea.io/sepolia/${contractAddress}/${batch.nftTokenId}`,
+    };
   }
 
   async getBatchFromBlockchain(batchId: string) {
@@ -707,5 +592,218 @@ export class BatchesService {
     });
 
     return { isCompliant, reason };
+  }
+
+  // ============================================================
+  // 🚀 MÉTODOS DE INTEGRAÇÃO COM BLOCKCHAIN (CORRIGIDOS)
+  // ============================================================
+
+  /**
+   * Registra um lote na blockchain (endpoint: POST /batches/:batchId/register-blockchain)
+   */
+  async registerOnBlockchain(batchId: string, specialistId: string) {
+    // 1. Buscar o lote com todos os dados necessários
+    const batch = await this.prisma.batch.findUnique({
+      where: { batchId },
+      include: {
+        company: true,
+        batchSuppliers: true,
+        documents: true, // para buscar o ipfsDocumentHash se não estiver no batch diretamente
+      },
+    });
+
+    if (!batch) {
+      throw new NotFoundException(
+        `Lote ${batchId} não encontrado no banco de dados`,
+      );
+    }
+
+    // 2. Verificar se já foi registrado
+    if (batch.blockchainTxHash) {
+      throw new BadRequestException('Lote já registrado na blockchain');
+    }
+
+    // 3. Preparar os dados para o contrato
+    const companyName = batch.company?.name || 'Empresa não informada';
+    const co2Emitted = batch.co2Emitted || 0;
+
+    // Usar os campos de origem/destino do lote (criados no create ou via update)
+    const countryOfOrigin = batch.countryOfOrigin || 'Brasil';
+    const destinationCountry = batch.destinationCountry || 'Exportação';
+
+    // Buscar o ipfsDocumentHash: apenas do próprio lote
+    let ipfsDocumentHash = batch.ipfsDocumentHash || '';
+
+    // Se quiser mesmo tentar buscar em documentos associados, use valores válidos do enum:
+    if (!ipfsDocumentHash && batch.documents && batch.documents.length > 0) {
+      const doc = batch.documents.find((d) => d.docType === 'CERTIFICATE'); // ou 'CARBON_REPORT'
+      if (doc && doc.ipfsHash) ipfsDocumentHash = doc.ipfsHash;
+    }
+
+    try {
+      // 4. Chamar o serviço de blockchain
+      const result = await this.blockchainService.registerBatchOnChain(
+        batch.batchId,
+        batch.productName,
+        co2Emitted,
+        companyName,
+        countryOfOrigin,
+        destinationCountry,
+        ipfsDocumentHash,
+      );
+
+      // 5. Atualizar o banco local
+      await this.prisma.batch.update({
+        where: { batchId },
+        data: {
+          blockchainTxHash: result.txHash,
+          blockchainRegisteredAt: new Date(),
+          status: BatchStatus.BLOCKCHAIN, // ou outro status adequado
+        },
+      });
+
+      this.logger.log(
+        `Lote ${batchId} registrado na blockchain com tx ${result.txHash}`,
+      );
+
+      return {
+        success: true,
+        message: 'Lote registrado na blockchain com sucesso',
+        batchId,
+        txHash: result.txHash,
+      };
+    } catch (error: any) {
+      this.logger.error(`Erro ao registrar lote ${batchId}: ${error.message}`);
+      await this.updateStatus(batchId, BatchStatus.ERROR);
+      throw new BadRequestException(
+        `Falha no registro blockchain: ${error.message}`,
+      );
+    }
+  }
+
+  /**
+   * Audita um lote na blockchain (aprova/reprova e emite NFT)
+   * Endpoint: POST /batches/:batchId/audit
+   */
+  async auditBatchOnBlockchain(
+    batchId: string,
+    isCompliant: boolean,
+    ipfsInspectionHash: string,
+    specialistId: string,
+  ) {
+    // 1. Verificar se o lote existe no banco local
+    const batch = await this.prisma.batch.findUnique({
+      where: { batchId },
+    });
+    if (!batch) {
+      throw new NotFoundException(
+        `Lote ${batchId} não encontrado no banco de dados`,
+      );
+    }
+
+    // 2. 🔥 VERIFICAÇÃO CRÍTICA: o lote já existe na blockchain?
+    const existsOnChain =
+      await this.blockchainService.isBatchRegistered(batchId);
+    if (!existsOnChain) {
+      throw new BadRequestException(
+        `Lote ${batchId} não encontrado na blockchain. É necessário registrá-lo primeiro (clique em "Registrar e Aprovar").`,
+      );
+    }
+
+    // 3. Se aprovado, mas não forneceu hash de laudo, gerar um placeholder
+    let finalInspectionHash = ipfsInspectionHash;
+    if (isCompliant && (!ipfsInspectionHash || ipfsInspectionHash === '')) {
+      finalInspectionHash = `approved-by-specialist-${Date.now()}`;
+      this.logger.warn(
+        `Hash de laudo não fornecido para aprovação do lote ${batchId}. Usando placeholder: ${finalInspectionHash}`,
+      );
+    }
+
+    try {
+      // 4. Chamar o serviço de blockchain para auditar
+      const result = await this.blockchainService.auditBatchOnChain(
+        batchId,
+        isCompliant,
+        finalInspectionHash,
+      );
+
+      // 5. Atualizar o banco local com o resultado da auditoria
+      const updateData: any = {
+        isCompliant,
+        ipfsInspectionHash: finalInspectionHash,
+        auditorAddress: specialistId,
+        auditedAt: new Date(),
+        // blockchainAuditTxHash: result.txHash,
+        status: isCompliant ? BatchStatus.COMPLETED : BatchStatus.REJECTED,
+      };
+
+      // Se o contrato retornou um tokenId (via evento), você pode buscá-lo.
+      // Por simplicidade, não estamos recuperando o tokenId aqui, mas ele pode ser obtido via evento Cert  ificateIssued.
+      // Se você tiver um listener, pode atualizar o campo nftTokenId posteriormente.
+
+      await this.prisma.batch.update({
+        where: { batchId },
+        data: updateData,
+      });
+
+      this.logger.log(
+        `Lote ${batchId} auditado: ${isCompliant ? 'aprovado' : 'reprovado'} (tx: ${result.txHash})`,
+      );
+
+      return {
+        success: true,
+        message: isCompliant
+          ? 'Lote aprovado e certificado NFT emitido com sucesso'
+          : 'Lote reprovado',
+        batchId,
+        txHash: result.txHash,
+        nftTokenId: isCompliant ? batch.nftTokenId : null, // pode ser null se ainda não capturado
+      };
+    } catch (error: any) {
+      this.logger.error(`Erro ao auditar lote ${batchId}: ${error.message}`);
+      throw new BadRequestException(
+        `Falha na auditoria blockchain: ${error.message}`,
+      );
+    }
+  }
+
+  async exportBatchToBlockchain(batchId: string, specialistId: string) {
+    const batch = await this.prisma.batch.findUnique({
+      where: { batchId },
+      include: {
+        company: true,
+        batchSuppliers: { include: { supplier: true } },
+      },
+    });
+
+    if (!batch) {
+      throw new NotFoundException(`Lote ${batchId} não encontrado`);
+    }
+
+    const registerResult = await this.registerOnBlockchain(
+      batchId,
+      specialistId,
+    );
+
+    let auditResult: Awaited<
+      ReturnType<typeof this.auditBatchOnBlockchain>
+    > | null = null;
+    if (batch.isCompliant) {
+      auditResult = await this.auditBatchOnBlockchain(
+        batchId,
+        batch.isCompliant,
+        batch.ipfsInspectionHash || '',
+        specialistId,
+      );
+    }
+
+    return {
+      success: true,
+      register: registerResult,
+      audit: auditResult,
+      message: auditResult
+        ? 'Lote registrado e aprovado com sucesso'
+        : 'Lote registrado (aguardando auditoria)',
+    };
   }
 }

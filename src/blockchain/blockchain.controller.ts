@@ -285,20 +285,26 @@ export class BlockchainController {
   @Roles(Role.SPECIALIST, Role.ADMIN)
   async auditBatch(
     @Param('batchId') batchId: string,
-    @Body() body: { isCompliant: boolean; ipfsInspectionHash: string },
+    @Body() body: { isCompliant: boolean; ipfsInspectionHash?: string },
     @CurrentUser() user: any,
   ) {
     try {
+      // 🔧 Se for aprovação e nenhum hash foi fornecido, gera um placeholder automático
+      let inspectionHash = body.ipfsInspectionHash || '';
+      if (body.isCompliant && !inspectionHash) {
+        inspectionHash = `approved-by-specialist-${Date.now()}`;
+      }
+
       const result = await this.blockchainService.auditBatchOnChain(
         batchId,
         body.isCompliant,
-        body.ipfsInspectionHash,
+        inspectionHash,
       );
 
       return {
         success: true,
         message: body.isCompliant
-          ? 'Lote aprovado e certificado'
+          ? 'Lote aprovado e certificado emitido'
           : 'Lote reprovado',
         batchId,
         txHash: result.txHash,
@@ -360,5 +366,11 @@ export class BlockchainController {
         HttpStatus.BAD_REQUEST,
       );
     }
+  }
+
+  @Get(':batchId/validate')
+  @Roles(Role.SPECIALIST, Role.ADMIN)
+  async validateConsistency(@Param('batchId') batchId: string) {
+    return this.blockchainService.validateConsistency(batchId);
   }
 }

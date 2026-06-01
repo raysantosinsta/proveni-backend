@@ -567,4 +567,51 @@ export class BlockchainService {
       return { connected: false, hasSigner: false };
     }
   }
+
+  async validateConsistency(batchId: string): Promise<{
+    isConsistent: boolean;
+    discrepancies: string[];
+    blockchainData: any;
+    localData: any;
+  }> {
+    const blockchainBatch = await this.getFullBatch(batchId);
+    const localBatch = await this.prisma.batch.findUnique({
+      where: { batchId },
+      include: { batchSuppliers: true },
+    });
+
+    const discrepancies: string[] = [];
+
+    if (!blockchainBatch && localBatch?.blockchainTxHash) {
+      discrepancies.push(
+        'Lote marcado como blockchain mas não encontrado na rede',
+      );
+    }
+
+    if (blockchainBatch && localBatch) {
+      // Comparar CO2
+      const blockchainCO2 = blockchainBatch.co2Emitted;
+      const localCO2 = localBatch.co2Emitted || 0;
+
+      if (Math.abs(blockchainCO2 - localCO2) > 0.01) {
+        discrepancies.push(
+          `CO2不一致: blockchain=${blockchainCO2}, local=${localCO2}`,
+        );
+      }
+
+      // Comparar status
+      if (blockchainBatch.isCompliant !== localBatch.isCompliant) {
+        discrepancies.push(
+          `Status不一致: blockchain=${blockchainBatch.isCompliant}, local=${localBatch.isCompliant}`,
+        );
+      }
+    }
+
+    return {
+      isConsistent: discrepancies.length === 0,
+      discrepancies,
+      blockchainData: blockchainBatch,
+      localData: localBatch,
+    };
+  }
 }
