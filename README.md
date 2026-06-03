@@ -1,98 +1,201 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Proveni - Plataforma de Rastreabilidade e Conformidade ESG com Blockchain
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+**Proveni** é uma plataforma completa de **rastreabilidade de exportação** que combina **Inteligência Artificial**, **OCR avançado** e **Blockchain** para garantir transparência, conformidade ESG e emissão de certificados digitais (NFTs) para produtos exportados.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+Foco principal: Exportadores brasileiros que precisam comprovar origem, pegada de carbono e conformidade com regulamentações internacionais (ex: European Green Deal, CBAM).
 
-## Description
+---
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+## ✨ Funcionalidades Principais
 
-## Project setup
+### 🔹 Fluxo Completo da Cadeia de Suprimentos
 
-```bash
-$ npm install
+- Cadastro de empresas (Exportadores e Fornecedores)
+- Vinculação de fornecedores
+- Upload de documentos (NF-e, relatórios de carbono, certificados)
+- Extração automática de dados via **IA + OCR**
+- Criação e gestão de lotes de exportação
+- Validação por especialistas
+- Registro imutável na **Blockchain**
+- Emissão de **NFTs de Certificado de Conformidade**
+
+### 🤖 Inteligência Artificial
+
+- Suporte a múltiplos provedores: **Groq (Llama)**, **OpenAI**, **Gemini** e **Claude**
+- Extração inteligente de: número da NF, produto, quantidade, fornecedor, CNPJ, CO₂ emitido, valor, data, etc.
+- OCR robusto para PDFs escaneados e nativos
+
+### ⛓️ Blockchain & Web3
+
+- Registro de lotes na rede Ethereum (Sepolia)
+- Auditoria por especialistas (role `SPECIALIST`)
+- Emissão automática de NFT ao aprovar lote
+- Verificação pública via QR Code
+- Transparência total para alfândega e compradores internacionais
+
+### 👥 Sistema de Roles
+
+| Role           | Permissões Principais                      |
+| -------------- | ------------------------------------------ |
+| **SUPPLIER**   | Enviar documentos                          |
+| **OPERATOR**   | Processar e extrair dados                  |
+| **SPECIALIST** | Validar, auditar e registrar na blockchain |
+| **MANAGER**    | Gerir lotes, fornecedores e dashboard      |
+| **ADMIN**      | Controle total da plataforma               |
+
+---
+
+## 🛠️ Tecnologias Utilizadas
+
+- **Backend**: NestJS + TypeScript
+- **Banco de Dados**: PostgreSQL + Prisma ORM
+- **IA/OCR**: Tesseract.js, pdf2json, múltiplos LLMs
+- **Blockchain**: Ethers.js + Smart Contract (Solidity)
+- **Armazenamento Descentralizado**: IPFS via Pinata
+- **Autenticação**: JWT + Roles
+- **Upload**: Multer + memória
+
+---
+
+## 📁 Estrutura de Pastas (Principais)
+
+```
+src/
+├── ai/              # Integração com LLMs e extração
+├── ocr/             # Processamento de documentos
+├── blockchain/      # Integração Ethereum + Smart Contract
+├── ipfs/            # Upload para Pinata
+├── documents/       # Upload, extração e validação
+├── batches/         # Gestão de lotes
+├── manager/         # Fluxos do gestor
+├── auth/            # Autenticação
+├── prisma/          # Schema e migrations
+└── common/          # Guards, decorators, etc.
 ```
 
-## Compile and run the project
+---
+
+## 🚀 Como Rodar o Projeto
+
+### 1. Clone o repositório
 
 ```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+git clone <url-do-seu-repositorio>
+cd proveni-backend
 ```
 
-## Run tests
+### 2. Instale as dependências
 
 ```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+npm install
 ```
 
-## Deployment
+### 3. Configure o ambiente
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+Crie um arquivo `.env` na raiz:
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+```env
+# ==================== DATABASE ====================
+DATABASE_URL="postgresql://usuario:senha@localhost:5432/nome_do_banco?schema=public"
+
+# ==================== AUTHENTICATION ====================
+JWT_SECRET="seu-secret-super-seguro-aqui-mude-para-um-valor-forte"
+JWT_EXPIRES_IN="7d"
+
+# ==================== IPFS (Pinata) ====================
+PINATA_API_KEY="sua_chave_pinata_aqui"
+PINATA_SECRET_KEY="seu_secret_pinata_aqui"
+
+# ==================== IA / LLM Providers ====================
+OPENAI_API_KEY="sk-..."
+GEMINI_API_KEY="AIzaSy..."
+GROQ_API_KEY="gsk_..."
+CLAUDE_API_KEY="sk-ant-..."
+
+# ==================== BLOCKCHAIN (Sepolia) ====================
+BLOCKCHAIN_RPC_URL=https://sepolia.infura.io/v3/SEU_INFURA_PROJECT_ID
+BLOCKCHAIN_PRIVATE_KEY=0xSEU_PRIVATE_KEY_AQUI
+CONTRACT_ADDRESS=0xSEU_CONTRATO_AQUI
+FIRST_AUDITOR_ADDRESS=0xENDERECO_DO_AUDITOR
+
+# ==================== SERVER ====================
+PORT=3001
+```
+
+### 4. Rode as migrações
 
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+npx prisma generate
+npx prisma migrate dev
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+# 4.1 (Opcional) Popule o banco com dados iniciais (se tiver seed)
 
-## Resources
+npx prisma db seed
 
-Check out a few resources that may come in handy when working with NestJS:
+### 5. Inicie o servidor
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+```bash
+npm run start:dev
+```
 
-## Support
+---
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+## 📊 Principais Fluxos
 
-## Stay in touch
+### Fluxo Completo de Exportação
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+1. **Fornecedor** → Faz upload da Nota Fiscal
+2. **Operator** → Sistema extrai dados via IA/OCR
+3. **Manager** → Cria lote agregando vários fornecedores
+4. **Specialist** → Valida conformidade (CO₂, documentos)
+5. **Specialist** → Registra na blockchain + emite NFT
+6. **Comprador/Alfândega** → Verifica via QR Code (público)
 
-## License
+---
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+## 🔗 Endpoints Principais
+
+### Documentos
+
+- `POST /documents/upload` → Upload + IPFS
+- `POST /documents/:id/extract-ai` → Extração com IA
+- `POST /documents/:id/validate` → Validação
+
+### Lotes
+
+- `POST /batches` → Criar lote
+- `POST /manager/batches/create` → Lote final com fornecedores
+- `POST /batches/:batchId/register-blockchain` → Registrar
+
+### Blockchain (Público)
+
+- `GET /blockchain/batch/:batchId` → Consultar lote
+- `GET /blockchain/batch/:batchId/quick` → Verificação rápida
+
+---
+
+## 📈 Próximos Passos (Roadmap Sugerido)
+
+- [ ] Dashboard frontend (React/Next.js)
+- [ ] Notificações em tempo real (WebSocket)
+- [ ] Relatórios PDF automáticos
+- [ ] Integração com sistemas fiscais (SEFAZ)
+- [ ] Suporte a múltiplas blockchains
+- [ ] Auditoria automática via IA
+
+---
+
+## 🤝 Contribuindo
+
+Contribuições são bem-vindas! Sinta-se à vontade para abrir **Issues** e **Pull Requests**.
+
+---
+
+## 📄 Licença
+
+Este projeto é de propriedade intelectual. Uso interno ou sob licença comercial.
+
+---
+
+**Desenvolvido com ❤️ para um comércio internacional mais transparente e sustentável.**

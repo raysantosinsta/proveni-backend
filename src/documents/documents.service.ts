@@ -184,11 +184,6 @@ export class DocumentsService {
       throw new NotFoundException(`Documento ${documentId} não encontrado`);
     }
 
-    this.logger.log(`📄 Documento: ${doc.originalName}`);
-    this.logger.log(`📋 Tipo MIME: ${doc.mimeType}`);
-    this.logger.log(`🔗 IPFS Hash: ${doc.ipfsHash}`);
-    this.logger.log(`📊 Status atual: ${doc.processingStatus}`);
-
     if (!doc.ipfsHash) {
       throw new BadRequestException('Documento não possui hash IPFS');
     }
@@ -214,10 +209,6 @@ export class DocumentsService {
         timeout: 60000,
       });
 
-      this.logger.log(
-        `✅ Download concluído: ${(response.data.length / 1024).toFixed(2)} KB`,
-      );
-
       const tempDir = path.resolve(os.tmpdir(), 'proveni-ai');
       await fs.promises.mkdir(tempDir, { recursive: true });
 
@@ -226,80 +217,57 @@ export class DocumentsService {
         tempDir,
         `${documentId}_${Date.now()}${originalExt}`,
       );
-
-      this.logger.log(`💾 Salvando arquivo temporário: ${tempFilePath}`);
       await fs.promises.writeFile(tempFilePath, response.data);
 
-      const stats = await fs.promises.stat(tempFilePath);
-      this.logger.log(
-        `📊 Tamanho do arquivo temporário: ${(stats.size / 1024).toFixed(2)} KB`,
-      );
-
-      let extractedText = (doc.extractedData as any)?.text || '';
+      let extractedText: any = (doc.extractedData as any)?.text || '';
 
       if (!extractedText) {
         this.logger.log(`🔍 Extraindo texto do arquivo baixado...`);
-        this.logger.log(`📋 Extensão do arquivo: ${originalExt}`);
-        this.logger.log(`📋 MIME Type: ${doc.mimeType || 'desconhecido'}`);
-
         extractedText = await this.ocr.extractTextFromAnyFile(
           tempFilePath,
           doc.mimeType || 'application/octet-stream',
         );
-
-        this.logger.log(`📝 OCR retornou ${extractedText.length} caracteres`);
-
-        if (extractedText.length > 0) {
-          this.logger.log(
-            `📄 Amostra do texto: "${extractedText.substring(0, 300)}..."`,
-          );
-        } else {
-          this.logger.error(
-            `❌ OCR não conseguiu extrair texto do arquivo ${tempFilePath}`,
-          );
-
-          try {
-            const buffer = await fs.promises.readFile(tempFilePath);
-            const textSample = buffer.toString('utf-8', 0, 500);
-            if (
-              textSample &&
-              textSample.length > 50 &&
-              !textSample.startsWith('%PDF')
-            ) {
-              this.logger.log(`🔄 Tentando leitura direta do arquivo...`);
-              extractedText = textSample;
-              this.logger.log(
-                `✅ Leitura direta obteve ${extractedText.length} caracteres`,
-              );
-            }
-          } catch (readError: any) {
-            this.logger.warn(`Leitura direta falhou: ${readError.message}`);
-          }
-        }
       }
 
-      if (!extractedText || extractedText.length < 30) {
+      // 🛡️ Garantir que extractedText seja string
+      if (
+        !extractedText ||
+        (typeof extractedText !== 'string' &&
+          !(extractedText instanceof String))
+      ) {
         this.logger.error(
-          `❌ Texto insuficiente: ${extractedText?.length || 0} caracteres`,
+          `❌ Texto extraído inválido: ${typeof extractedText}`,
         );
         throw new BadRequestException(
-          'Não foi possível extrair texto do documento. Verifique se o arquivo é um PDF ou imagem com texto legível.',
+          'Não foi possível extrair texto do documento.',
+        );
+      }
+
+      const extractedTextStr = String(extractedText);
+      if (extractedTextStr.length < 30) {
+        this.logger.error(
+          `❌ Texto insuficiente: ${extractedTextStr.length} caracteres`,
+        );
+        throw new BadRequestException(
+          'Não foi possível extrair texto suficiente do documento. Verifique se o arquivo é legível.',
         );
       }
 
       this.logger.log(
-        `🤖 Enviando texto para IA (${extractedText.length} caracteres)...`,
+        `🤖 Enviando texto para IA (${extractedTextStr.length} caracteres)...`,
       );
       const extractedData = await this.ai.extractFromDocument(
         '',
         undefined,
         undefined,
-        extractedText,
+        extractedTextStr,
       );
 
-      const sanitizeText = (text: string): string => {
-        if (!text) return '';
-        return text
+      // Função sanitizadora segura
+      const sanitizeText = (input: any): string => {
+        if (!input) return '';
+        const str = typeof input === 'string' ? input : String(input);
+        return str
           .replace(/\u0000/g, '')
           .replace(/[^\x20-\x7E\u00C0-\u00FF]/g, ' ')
           .replace(/\s+/g, ' ')
@@ -307,26 +275,22 @@ export class DocumentsService {
           .substring(0, 50000);
       };
 
-      const sanitizedText = sanitizeText(extractedText);
-
+      const sanitizedText = sanitizeText(extractedTextStr);
       const sanitizedExtractedData = { ...extractedData };
-      if (sanitizedExtractedData.productName) {
-        sanitizedExtractedData.productName = sanitizeText(
-          sanitizedExtractedData.productName,
-        );
-      }
-      if (sanitizedExtractedData.supplier) {
-        sanitizedExtractedData.supplier = sanitizeText(
-          sanitizedExtractedData.supplier,
-        );
-      }
-      if (sanitizedExtractedData.invoiceNumber) {
-        sanitizedExtractedData.invoiceNumber = sanitizeText(
-          sanitizedExtractedData.invoiceNumber,
-        );
-      }
-      if (sanitizedExtractedData.unit) {
-        sanitizedExtractedData.unit = sanitizeText(sanitizedExtractedData.unit);
+
+      // Sanitizar campos específicos
+      const fieldsToSanitize = [
+        'productName',
+        'supplier',
+        'invoiceNumber',
+        'unit',
+      ];
+      for (const field of fieldsToSanitize) {
+        if (sanitizedExtractedData[field]) {
+          sanitizedExtractedData[field] = sanitizeText(
+            sanitizedExtractedData[field],
+          );
+        }
       }
 
       const updatedDoc = await this.prisma.document.update({
@@ -342,21 +306,13 @@ export class DocumentsService {
         },
       });
 
-      this.logger.log(
-        `✅ Extração concluída com sucesso para documento ${documentId}`,
-      );
-      this.logger.log(`📊 Confiança: ${extractedData.confidence || 70}%`);
-
+      this.logger.log(`✅ Extração concluída para documento ${documentId}`);
       return {
         ...extractedData,
         confidence: extractedData.confidence || 70,
       };
     } catch (error: any) {
       this.logger.error(`❌ Erro na extração: ${error.message}`);
-      if (error.stack) {
-        this.logger.error(`📚 Stack trace: ${error.stack}`);
-      }
-
       await this.prisma.document.update({
         where: { id: documentId },
         data: {
@@ -367,18 +323,10 @@ export class DocumentsService {
           },
         },
       });
-
       throw new BadRequestException(`Erro na extração: ${error.message}`);
     } finally {
       if (tempFilePath) {
-        try {
-          await fs.promises.unlink(tempFilePath);
-          this.logger.log(`🗑️ Arquivo temporário removido: ${tempFilePath}`);
-        } catch (unlinkError) {
-          this.logger.warn(
-            `Não foi possível remover arquivo temporário: ${unlinkError.message}`,
-          );
-        }
+        await fs.promises.unlink(tempFilePath).catch(() => {});
       }
     }
   }
