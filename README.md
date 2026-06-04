@@ -75,28 +75,53 @@ src/
 
 ---
 
-## 🚀 Como Rodar o Projeto
+## 🚀 Como Rodar Localmente o Backend
 
 ### 1. Clone o repositório
 
 ```bash
 git clone <url-do-seu-repositorio>
-cd proveni-backend
 ```
 
-### 2. Instale as dependências
+### 2. Acesse a pasta do backend
+
+Depois de clonar o repositório, entre na pasta do backend:
+
+```bash
+cd backend
+```
+
+### 3. Instale as dependências
 
 ```bash
 npm install
 ```
 
-### 3. Configure o ambiente
+### 4. Suba o banco de dados com Docker Compose
 
-Crie um arquivo `.env` na raiz:
+O arquivo `docker-compose.yml` do backend sobe um PostgreSQL local na porta `5432`.
+
+```bash
+docker compose up -d
+```
+
+Credenciais padrão do container:
+
+```txt
+host: localhost
+port: 5432
+database: proveni_db
+user: proveni
+password: proveni123
+```
+
+### 5. Configure o ambiente
+
+Crie um arquivo `.env` na raiz da pasta `backend`:
 
 ```env
 # ==================== DATABASE ====================
-DATABASE_URL="postgresql://usuario:senha@localhost:5432/nome_do_banco?schema=public"
+DATABASE_URL="postgresql://proveni:proveni123@localhost:5432/proveni_db?schema=public"
 
 # ==================== AUTHENTICATION ====================
 JWT_SECRET="seu-secret-super-seguro-aqui-mude-para-um-valor-forte"
@@ -122,21 +147,50 @@ FIRST_AUDITOR_ADDRESS=0xENDERECO_DO_AUDITOR
 PORT=3001
 ```
 
-### 4. Rode as migrações
+### 6. Gere o Prisma Client e rode as migrações
 
 ```bash
 npx prisma generate
 npx prisma migrate dev
 ```
 
-# 4.1 (Opcional) Popule o banco com dados iniciais (se tiver seed)
+### 7. Popule o banco de dados com o seed
 
+O projeto possui seed configurado no `package.json`. Para criar os dados iniciais no banco local, rode:
+
+```bash
+npm run seed
+```
+
+Ou, se preferir executar via Prisma:
+
+```bash
 npx prisma db seed
+```
 
-### 5. Inicie o servidor
+### 8. Inicie o servidor em modo desenvolvimento
 
 ```bash
 npm run start:dev
+```
+
+Por padrão, a API ficará disponível em:
+
+```txt
+http://localhost:3001
+```
+
+### Comandos úteis
+
+```bash
+# Ver containers em execução
+docker compose ps
+
+# Parar o banco local
+docker compose down
+
+# Abrir o Prisma Studio
+npx prisma studio
 ```
 
 ---
